@@ -85,7 +85,7 @@ shots = [
     # ================ FEW-SHOTS ================
     # 1) Decisão de compra (finanças)
     {"human": 
-    "Recebi R$3.000 este mês, já gastei R$2.400 e tenho R$200 de dívida no cartão. Posso comprar um celular de R$1.200?",
+    "Recebi R$X.XXXX este mês, já gastei R$X.XXX e tenho R$XX.XXX de dívida no cartão. Posso comprar um celular de R$XX.XXX?",
     "ai":
      "- Sua sobra atual é ~R$600 e há dívida ativa de R$200.\n"
      "- *Recomendação*: \nNão recomendo a compra agora; priorize quitar a dívida e manter reserva mínima para o mês.\n"
