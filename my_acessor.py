@@ -100,7 +100,7 @@ prompt = ChatPromptTemplate.from_messages([
     system_prompt,                          # system prompt
     fewshots,                               # Shots human/ai 
     MessagesPlaceholder("chat_history"),    # memória
-    ("human", "{input}")                  # user prompt
+    ("human", "{input}"),                   # user prompt
     MessagesPlaceholder("agent_scratchpad"),
 ])
 
