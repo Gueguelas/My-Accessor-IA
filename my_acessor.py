@@ -11,6 +11,7 @@ from dotenv import load_dotenv
 import os
 from langchain_core.runnables.history import RunnableWithMessageHistory
 from langchain.memory import ChatMessageHistory
+from langchain.agents import create_tool_calling_agent, AgentExecutor
 
 
 from dotenv import load_dotenv
@@ -99,16 +100,29 @@ prompt = ChatPromptTemplate.from_messages([
     system_prompt,                          # system prompt
     fewshots,                               # Shots human/ai 
     MessagesPlaceholder("chat_history"),    # memória
-    ("human", "{usuario}")                  # user prompt
+    ("human", "{input}")                  # user prompt
+    MessagesPlaceholder("agent_scratchpad"),
 ])
 
 
 #  ================= CHAIN =================
-base_chain = prompt | llm | StrOutputParser()
+agent = create_tool_calling_agent(
+    llm,
+    TOOLS,
+    prompt
+)
+
+agent_executor = AgentExecutor(
+    agent=agent,
+    tools=TOOLS,
+    prompt=prompt,
+    verbose=False
+)
+
 chain = RunnableWithMessageHistory(
-    base_chain,
+    agent,
     get_session_history=get_session_history,
-    input_messages_key="usuario",
+    input_messages_key="input",
     history_messages_key="chat_history"
 )
 
@@ -120,7 +134,7 @@ while True:
         break
     try:
         response = chain.invoke(
-            {"usuario": user_input},
+            {"input": user_input},
             config={"configurable": {"session_id": "PRECISA_MAS_NAO_IMPORTA"}}
         )
         print(response)
