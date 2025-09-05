@@ -27,12 +27,26 @@ class AddTransactionArgs(BaseModel):
     payment_method: Optional[str] = Field(default=None, description="Forma de pagamento (opcional).")
 
 
-#Garante que o campo type da tabela transactions receba um id válido (1=INCOME, 2=EXPENSES, 3=TRANSFER
+#Garante que o campo type da tabela transactions receba um id válido (1=INCOME, 2=EXPENSES, 3=TRANSFER)
+    
+
+TYPE_ALIASES = {
+    "INCOME": "INCOME",
+    "ENTRADA": "INCOME",
+    "RECEITA": "INCOME",
+    "SALÁRIO": "INCOME",
+    "SALARY": "INCOME",
+    "EXPENSE": "EXPENSES",
+    "DESPESA": "EXPENSES",
+    "DESPESAS": "EXPENSES",
+    "TRANSFER": "TRANSFER",
+    "TRANSFERENCIA":"TRANSFER"
+}
 def _resolve_type_id(cur, type_id: Optional[int], type_name: Optional[str]) -> Optional[int]:
     if type_name:
         t = type_name.strip().upper()
-        if t == "EXPENSE":
-            t = "EXPENSES"
+        if t in TYPE_ALIASES:
+            t = TYPE_ALIASES[t]
         cur.execute("SELECT id FROM transaction_types WHERE UPPER(type)=%s LIMIT 1;", (t,))
         row = cur.fetchone()
         return row[0] if row else None
