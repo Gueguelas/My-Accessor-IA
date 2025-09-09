@@ -3,7 +3,7 @@ from dotenv import load_dotenv
 import psycopg2
 from typing import Optional
 from langchain.tools import tool
-from langchain.pydantic_v1 import BaseModel, Field
+from pydantic import BaseModel,Field
 
 load_dotenv()
 
@@ -20,6 +20,7 @@ class AddTransactionArgs(BaseModel):
         default=None,
         description="Timestamp ISO 8601; se ausente, usa NOW() no banco."
     )
+    category_name: Optional[str] = Field(default=None, description="Nome da categoria (opcional).""Caso não seja informado, coloque a que mais se enquadra, entre comida, besteira, estudo, transporte, lazer, constas, investimento, outros")
     type_id: Optional[int] = Field(default=None, description="ID em transaction_types (1=INCOME, 2=EXPENSES, 3=TRANSFER).")
     type_name: Optional[str] = Field(default=None, description="Nome do tipo: INCOME | EXPENSES | TRANSFER.")
     category_id: Optional[int] = Field(default=None, description="FK de categories (opcional).")
@@ -40,7 +41,9 @@ TYPE_ALIASES = {
     "DESPESA": "EXPENSES",
     "DESPESAS": "EXPENSES",
     "TRANSFER": "TRANSFER",
-    "TRANSFERENCIA":"TRANSFER"
+    "TRANSFERENCIA":"TRANSFER",
+    "CAIU":"INCOME",
+    "SAIU":"EXPENSES"
 }
 def _resolve_type_id(cur, type_id: Optional[int], type_name: Optional[str]) -> Optional[int]:
     if type_name:
@@ -54,6 +57,12 @@ def _resolve_type_id(cur, type_id: Optional[int], type_name: Optional[str]) -> O
         return int(type_id)
     return 2
 
+def _get_category_id(cur, category_name: Optional[str]) -> Optional[int]:
+    if not category_name:
+        return None
+    cur.execute("SELECT id FROM categories WHERE name=%s LIMIT 1;", (category_name,))
+    row = cur.fetchone()
+    return row[0] if row else None 
 
 # Tool: add_transaction
 @tool("add_transaction", args_schema=AddTransactionArgs)
@@ -64,6 +73,7 @@ def add_transaction(
     type_id: Optional[int] = None,
     type_name: Optional[str] = None,
     category_id: Optional[int] = None,
+    category_name: Optional[str] = None,
     description: Optional[str] = None,
     payment_method: Optional[str] = None,
 ) -> dict:
@@ -74,28 +84,30 @@ def add_transaction(
         resolved_type_id = _resolve_type_id(cur, type_id, type_name)
         if not resolved_type_id:
             return {"status": "error", "message": "Tipo inválido (use type_id ou type_name: INCOME/EXPENSES/TRANSFER)."}
+        
+        category_id = _get_category_id(cur, category_name) if not category_id else category_name
 
         if occurred_at:
             cur.execute(
                 """
                 INSERT INTO transactions
-                    (amount, type, category_id, description, payment_method, occurred_at, source_text)
+                    (amount, type, category_id, category_name, description, payment_method, occurred_at, source_text)
                 VALUES
-                    (%s, %s, %s, %s, %s, %s::timestamptz, %s)
+                    (%s, %s, %s, %s ,%s, %s, %s::timestamptz, %s)
                 RETURNING id, occurred_at;
                 """,
-                (amount, resolved_type_id, category_id, description, payment_method, occurred_at, source_text),
+                (amount, resolved_type_id, category_id, category_name, description, payment_method, occurred_at, source_text),
             )
         else:
             cur.execute(
                 """
                 INSERT INTO transactions
-                    (amount, type, category_id, description, payment_method, occurred_at, source_text)
+                    (amount, type, category_id, category_name ,description, payment_method, occurred_at, source_text)
                 VALUES
                     (%s, %s, %s, %s, %s, NOW(), %s)
                 RETURNING id, occurred_at;
                 """,
-                (amount, resolved_type_id, category_id, description, payment_method, source_text),
+                (amount, resolved_type_id, category_id, category_name ,description, payment_method, source_text),
             )
 
         new_id, occurred = cur.fetchone()

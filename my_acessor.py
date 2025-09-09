@@ -120,7 +120,7 @@ agent_executor = AgentExecutor(
 )
 
 chain = RunnableWithMessageHistory(
-    agent,
+    agent_executor,
     get_session_history=get_session_history,
     input_messages_key="input",
     history_messages_key="chat_history"
@@ -132,13 +132,13 @@ while True:
     if user_input.lower() in ["sair", "end", "fim", "tchau", "bye"]:
         print("Encerrando a conversa.")
         break
-    try:
-        response = chain.invoke(
-            {"input": user_input},
-            config={"configurable": {"session_id": "PRECISA_MAS_NAO_IMPORTA"}}
-        )
-        print(response)
-    except Exception as e:
-        print(f"Erro ao consumir a API: {e}")
+    # try:
+    response = chain.invoke(
+        {"input": user_input},
+        config={"configurable": {"session_id": "PRECISA_MAS_NAO_IMPORTA"}}
+    )
+    print(response['output'])
+    # except Exception as e:
+        # print(f"Erro ao consumir a API: {e}")
 
 
