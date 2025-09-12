@@ -13,6 +13,11 @@ from langchain_core.runnables.history import RunnableWithMessageHistory
 from langchain.memory import ChatMessageHistory
 from langchain.agents import create_tool_calling_agent, AgentExecutor
 from pg_tools import TOOLS
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
+TZ = ZoneInfo("America/Sao_Paulo")
+TODAY = datetime.now(TZ).strftime("%d/%m/%Y")
 
 from dotenv import load_dotenv
 import os
@@ -132,13 +137,13 @@ while True:
     if user_input.lower() in ["sair", "end", "fim", "tchau", "bye"]:
         print("Encerrando a conversa.")
         break
-    # try:
-    response = chain.invoke(
-        {"input": user_input},
-        config={"configurable": {"session_id": "PRECISA_MAS_NAO_IMPORTA"}}
-    )
-    print(response['output'])
-    # except Exception as e:
-        # print(f"Erro ao consumir a API: {e}")
+    try:
+        response = chain.invoke(
+            {"input": user_input},
+            config={"configurable": {"session_id": "PRECISA_MAS_NAO_IMPORTA"}}
+        )
+        print(response['output'])
+    except Exception as e:
+        print(f"Erro ao consumir a API: {e}")
 
 
