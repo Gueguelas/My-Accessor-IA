@@ -17,7 +17,7 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 TZ = ZoneInfo("America/Sao_Paulo")
-TODAY = datetime.now(TZ).strftime("%d/%m/%Y")
+today = datetime.now(TZ).strftime("%d/%m/%Y")
 
 from dotenv import load_dotenv
 import os
@@ -45,7 +45,7 @@ def get_session_history(session_id:int) -> ChatMessageHistory:
 ## COLOQUE O SEU TXT COM SEU PROPRIO PROMPT, SALVE EM "My-Accessor\prompt_accessor.txt"
 ## O MEU ESTÁ VERSIONADO COMO EXEMPLO A SEGUIR, MAS É MUITO MELHOR USAR O SEU
 
-with open("My-Accessor\prompt_accessor.txt", "r", encoding="utf-8") as f:
+with open("prompt_accessor.txt", "r", encoding="utf-8") as f:
     system_text = f.read()
 system_prompt = ("system", system_text)
 
@@ -108,6 +108,8 @@ prompt = ChatPromptTemplate.from_messages([
     ("human", "{input}"),                   # user prompt
     MessagesPlaceholder("agent_scratchpad"),
 ])
+
+prompt = prompt.partial(today_local=today.format())
 
 
 #  ================= CHAIN =================

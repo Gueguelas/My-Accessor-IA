@@ -85,7 +85,8 @@ def add_transaction(
         if not resolved_type_id:
             return {"status": "error", "message": "Tipo inválido (use type_id ou type_name: INCOME/EXPENSES/TRANSFER)."}
         
-        category_id = _get_category_id(cur, category_name) if not category_id else category_name
+        if not category_id :
+            category_id = _get_category_id(cur, category_name) if not category_id else category_name
 
         if occurred_at:
             cur.execute(
