@@ -11,7 +11,8 @@ from dotenv import load_dotenv
 import os
 from langchain_core.runnables.history import RunnableWithMessageHistory
 from langchain.memory import ChatMessageHistory
-
+from langchain.agents import create_tool_calling_agent, AgentExecutor
+from pg_tools import TOOLS
 
 from dotenv import load_dotenv
 import os
@@ -99,16 +100,29 @@ prompt = ChatPromptTemplate.from_messages([
     system_prompt,                          # system prompt
     fewshots,                               # Shots human/ai 
     MessagesPlaceholder("chat_history"),    # memória
-    ("human", "{usuario}")                  # user prompt
+    ("human", "{input}"),                   # user prompt
+    MessagesPlaceholder("agent_scratchpad"),
 ])
 
 
 #  ================= CHAIN =================
-base_chain = prompt | llm | StrOutputParser()
+agent = create_tool_calling_agent(
+    llm,
+    TOOLS,
+    prompt
+)
+
+agent_executor = AgentExecutor(
+    agent=agent,
+    tools=TOOLS,
+    prompt=prompt,
+    verbose=False
+)
+
 chain = RunnableWithMessageHistory(
-    base_chain,
+    agent_executor,
     get_session_history=get_session_history,
-    input_messages_key="usuario",
+    input_messages_key="input",
     history_messages_key="chat_history"
 )
 
@@ -118,13 +132,13 @@ while True:
     if user_input.lower() in ["sair", "end", "fim", "tchau", "bye"]:
         print("Encerrando a conversa.")
         break
-    try:
-        response = chain.invoke(
-            {"usuario": user_input},
-            config={"configurable": {"session_id": "PRECISA_MAS_NAO_IMPORTA"}}
-        )
-        print(response)
-    except Exception as e:
-        print(f"Erro ao consumir a API: {e}")
+    # try:
+    response = chain.invoke(
+        {"input": user_input},
+        config={"configurable": {"session_id": "PRECISA_MAS_NAO_IMPORTA"}}
+    )
+    print(response['output'])
+    # except Exception as e:
+        # print(f"Erro ao consumir a API: {e}")
 
 
