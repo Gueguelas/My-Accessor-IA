@@ -7,7 +7,7 @@ from pydantic import BaseModel,Field
 
 load_dotenv()
 
-DATABASE_URL = os.getenv("DATABASE_URL")  
+DATABASE_URL = os.getenv("DATABASE_URL_CASA")  # ou DATABASE_URL_ESCOLA, conforme o ambiente
 
 def get_conn():
     return psycopg2.connect(DATABASE_URL)
@@ -92,24 +92,25 @@ def add_transaction(
             cur.execute(
                 """
                 INSERT INTO transactions
-                    (amount, type, category_id, category_name, description, payment_method, occurred_at, source_text)
+                    (amount, "type", category_id, description, payment_method, occurred_at, source_text)
                 VALUES
-                    (%s, %s, %s, %s ,%s, %s, %s::timestamptz, %s)
+                    (%s, %s, %s, %s, %s, %s::timestamptz, %s)
                 RETURNING id, occurred_at;
                 """,
-                (amount, resolved_type_id, category_id, category_name, description, payment_method, occurred_at, source_text),
+                (amount, resolved_type_id, category_id, description, payment_method, occurred_at, source_text),
             )
         else:
             cur.execute(
                 """
                 INSERT INTO transactions
-                    (amount, type, category_id, category_name ,description, payment_method, occurred_at, source_text)
+                    (amount, "type", category_id, description, payment_method, occurred_at, source_text)
                 VALUES
                     (%s, %s, %s, %s, %s, NOW(), %s)
                 RETURNING id, occurred_at;
                 """,
-                (amount, resolved_type_id, category_id, category_name ,description, payment_method, source_text),
+                (amount, resolved_type_id, category_id, description, payment_method, source_text),
             )
+
 
         new_id, occurred = cur.fetchone()
         conn.commit()
