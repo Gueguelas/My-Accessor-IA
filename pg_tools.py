@@ -27,6 +27,13 @@ class AddTransactionArgs(BaseModel):
     description: Optional[str] = Field(default=None, description="Descrição (opcional).")
     payment_method: Optional[str] = Field(default=None, description="Forma de pagamento (opcional).")
 
+class QueryTransactionsArgs(BaseModel):
+    text: Optional[str] = Field(default=None, description="texto com contexto para buscar em source_text ou description (opcional).")
+    type_name: Optional[str] = Field(default=None, description="Nome do tipo: INCOME | EXPENSES | TRANSFER (opcional).")
+    date_local: Optional[str] = Field(default=None, description="Data local (YYYY-MM-DD) para filtrar (opcional).")
+    date_from_local: Optional[str] = Field(default=None, description="Data local inicial (YYYY-MM-DD) para filtrar (opcional).")
+    date_to_local: Optional[str] = Field(default=None, description="Data local final (YYYY-MM-DD) para filtrar (opcional).")
+    limit: int = Field(default=20, description="Número máximo de transações a retornar.")
 
 #Garante que o campo type da tabela transactions receba um id válido (1=INCOME, 2=EXPENSES, 3=TRANSFER)
     
@@ -127,5 +134,152 @@ def add_transaction(
             pass
 
 
+@tool("query_transactions", args_schema=QueryTransactionsArgs)
+def query_transactions(
+    text: Optional[str] = None,
+    type_name: Optional[str] = None,
+    date_local: Optional[str] = None,
+    date_from_local: Optional[str] = None,
+    date_to_local: Optional[str] = None,
+    limit: int = 20,
+) -> dict:
+    """
+    Consulta transações com filtros por texto (source_text/description), tipo e data locais (America/Sao_Paulo).
+    Os dados devem vir na seguinte ordem:
+     - intervalo(date_from_local, date_to_local) ASC(cronológico)
+     - Caso contrário: DESC (mais recentes primeiro).
+    """
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        filters = []
+        params = []
+
+        if text:
+            filters.append("(source_text ILIKE %s OR description ILIKE %s)")
+            like_pattern = f"%{text}%"
+            params.extend([like_pattern, like_pattern])
+
+        resolved_type_id = _resolve_type_id(cur, None, type_name)
+        if resolved_type_id:
+            filters.append('"type" = %s')
+            params.append(resolved_type_id)
+
+        if date_local:
+            filters.append("DATE(occurred_at AT TIME ZONE 'UTC' AT TIME ZONE 'America/Sao_Paulo') = %s")
+            params.append(date_local)
+
+        if date_from_local and date_to_local:
+            filters.append("DATE(occurred_at AT TIME ZONE 'UTC' AT TIME ZONE 'America/Sao_Paulo') BETWEEN %s AND %s")
+            params.extend([date_from_local, date_to_local])
+        elif date_from_local:
+            filters.append("DATE(occurred_at AT TIME ZONE 'UTC' AT TIME ZONE 'America/Sao_Paulo') >= %s")
+            params.append(date_from_local)
+        elif date_to_local:
+            filters.append("DATE(occurred_at AT TIME ZONE 'UTC' AT TIME ZONE 'America/Sao_Paulo') <= %s")
+            params.append(date_to_local)
+
+        where_clause = " AND ".join(filters) if filters else "1=1"
+        
+        order_clause = "ASC" if date_from_local and date_to_local else "DESC"
+
+        query = f"""
+            SELECT id, amount, "type", category_id, description, payment_method,
+                   occurred_at AT TIME ZONE 'UTC' AT TIME ZONE 'America/Sao_Paulo' AS occurred_local,
+                   source_text
+            FROM transactions
+            WHERE {where_clause}
+            ORDER BY occurred_at {order_clause}
+            LIMIT %s;
+        """
+        params.append(limit)
+
+        cur.execute(query, tuple(params))
+        rows = cur.fetchall()
+
+        transactions = []
+        for row in rows:
+            (tid, amount, ttype, category_id, description, payment_method, occurred_local, source_text) = row
+            transactions.append({
+                "id": tid,
+                "amount": float(amount),
+                "type": ttype,
+                "category_id": category_id,
+                "description": description,
+                "payment_method": payment_method,
+                "occurred_at_local": occurred_local.isoformat(),
+                "source_text": source_text
+            })
+        return {"status": "ok", "transactions": transactions}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+    finally:
+        try:
+            cur.close()
+            conn.close()
+        except Exception:
+            pass
+    
+@tool("total_balance") 
+def total_balance() -> dict:
+    """Retorna o saldo total (INCOME - EXPENSES) das transações."""
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            SELECT 
+                COALESCE(SUM(CASE WHEN t.type = 1 THEN t.amount ELSE 0 END), 0) AS total_income,
+                COALESCE(SUM(CASE WHEN t.type = 2 THEN t.amount ELSE 0 END), 0) AS total_expenses
+            FROM transactions t;
+        """)
+        row = cur.fetchone()
+        total_income, total_expenses = row
+        balance = total_income - total_expenses
+        return {
+            "status": "ok",
+            "total_income": float(total_income),
+            "total_expenses": float(total_expenses),
+            "balance": float(balance)
+        }
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+    finally:
+        try:
+            cur.close()
+            conn.close()
+        except Exception:
+            pass
+
+@tool("daily_balance")
+def daily_balance(date_local: str) -> dict:
+    """Retorna o saldo (INCOME - EXPENSES) das transações para uma data específica (YYYY-MM-DD)."""
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            SELECT 
+                COALESCE(SUM(CASE WHEN t.type = 1 THEN t.amount ELSE 0 END), 0) AS total_income,
+                COALESCE(SUM(CASE WHEN t.type = 2 THEN t.amount ELSE 0 END), 0) AS total_expenses
+            FROM transactions t
+            WHERE DATE(t.occurred_at AT TIME ZONE 'UTC' AT TIME ZONE 'America/Sao_Paulo') = %s;
+        """, (date_local,))
+        row = cur.fetchone()
+        total_income, total_expenses = row
+        balance = total_income - total_expenses
+        return {
+            "status": "ok",
+            "date": date_local,
+            "total_income": float(total_income),
+            "total_expenses": float(total_expenses),
+            "balance": float(balance)
+        }
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+    finally:
+        try:
+            cur.close()
+            conn.close()
+        except Exception:
+            pass
 # Exporta a lista de tools
-TOOLS = [add_transaction]
+TOOLS = [add_transaction, query_transactions, total_balance, daily_balance, ]
