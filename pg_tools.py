@@ -4,6 +4,7 @@ import psycopg2
 from typing import Optional
 from langchain.tools import tool
 from pydantic import BaseModel,Field
+from requests import get
 
 load_dotenv()
 
@@ -34,6 +35,12 @@ class QueryTransactionsArgs(BaseModel):
     date_from_local: Optional[str] = Field(default=None, description="Data local inicial (YYYY-MM-DD) para filtrar (opcional).")
     date_to_local: Optional[str] = Field(default=None, description="Data local final (YYYY-MM-DD) para filtrar (opcional).")
     limit: int = Field(default=20, description="Número máximo de transações a retornar.")
+
+
+class CoinConverter(BaseModel):
+    valor: float = Field(description="Valor que irá ser convertido")
+    de: str = Field(description="Moeda de origem no formato ISO (ex: USD, BRL, EUR)")
+    para: str = Field(description="Moeda de destino no formato ISO (ex: USD, BRL, EUR). Maior parte dos casos será 'BRL'")
 
 #Garante que o campo type da tabela transactions receba um id válido (1=INCOME, 2=EXPENSES, 3=TRANSFER)
     
@@ -358,5 +365,19 @@ def biggest_expenses(limit:Optional[int] = 5) -> dict:
             conn.close()
         except Exception:
             pass
+
+@tool("coin_converter", args_schema=CoinConverter)
+def coin_converter(valor:float, de:str, para:str="BRL"):
+    """Converte um valor de uma moeda para outra usando exchangerate.host"""
+    try:
+        url = f"https://api.frankfurter.app/latest?amount={valor}&from={de}&to={para}"
+        r = get(url)
+        data = r.json()
+        if "rates" in data and para.upper() in data["rates"]:
+            return f"{valor} {de.upper()} = {data['rates'][para.upper()]:.2f} {para.upper()}"
+        return data
+    except Exception as e:
+        return f"Erro ao acessar API de conversão: {e}"
+
 # Exporta a lista de tools
-TOOLS = [add_transaction, query_transactions, total_balance, daily_balance, biggest_expenses]
+TOOLS = [add_transaction, query_transactions, total_balance, daily_balance, biggest_expenses, coin_converter]
