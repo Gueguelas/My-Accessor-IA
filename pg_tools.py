@@ -7,7 +7,7 @@ from pydantic import BaseModel,Field
 
 load_dotenv()
 
-DATABASE_URL = os.getenv("DATABASE_URL_CASA")  # ou DATABASE_URL_ESCOLA, conforme o ambiente
+DATABASE_URL = os.getenv("DATABASE_URL")  # ou DATABASE_URL_ESCOLA, conforme o ambiente
 
 def get_conn():
     return psycopg2.connect(DATABASE_URL)
@@ -20,7 +20,7 @@ class AddTransactionArgs(BaseModel):
         default=None,
         description="Timestamp ISO 8601; se ausente, usa NOW() no banco."
     )
-    category_name: Optional[str] = Field(default=None, description="Nome da categoria (opcional).""Caso não seja informado, coloque a que mais se enquadra, entre comida, besteira, estudo, transporte, lazer, constas, investimento, outros")
+    category_name: Optional[str] = Field(default=None, description="Nome da categoria (opcional).""Caso não seja informado, coloque a que mais se enquadra, entre comida, besteira, estudo, transporte, moradia,saude, lazer, contas, investimento, presente ou outros")
     type_id: Optional[int] = Field(default=None, description="ID em transaction_types (1=INCOME, 2=EXPENSES, 3=TRANSFER).")
     type_name: Optional[str] = Field(default=None, description="Nome do tipo: INCOME | EXPENSES | TRANSFER.")
     category_id: Optional[int] = Field(default=None, description="FK de categories (opcional).")
@@ -96,25 +96,27 @@ def add_transaction(
             category_id = _get_category_id(cur, category_name) if not category_id else category_name
 
         if occurred_at:
-            cur.execute(
-                """
+            query = """
                 INSERT INTO transactions
                     (amount, "type", category_id, description, payment_method, occurred_at, source_text)
                 VALUES
                     (%s, %s, %s, %s, %s, %s::timestamptz, %s)
                 RETURNING id, occurred_at;
-                """,
+                """
+            cur.execute(
+                query,
                 (amount, resolved_type_id, category_id, description, payment_method, occurred_at, source_text),
             )
         else:
-            cur.execute(
-                """
+            query = """
                 INSERT INTO transactions
                     (amount, "type", category_id, description, payment_method, occurred_at, source_text)
                 VALUES
                     (%s, %s, %s, %s, %s, NOW(), %s)
                 RETURNING id, occurred_at;
-                """,
+                """
+            cur.execute(
+                query,
                 (amount, resolved_type_id, category_id, description, payment_method, source_text),
             )
 
@@ -148,6 +150,7 @@ def query_transactions(
     Os dados devem vir na seguinte ordem:
      - intervalo(date_from_local, date_to_local) ASC(cronológico)
      - Caso contrário: DESC (mais recentes primeiro).
+     - Fazer com que ele sempre diga: O que gastou - qual foi o motivo - valor gasto.
     """
     conn = get_conn()
     cur = conn.cursor()
@@ -156,7 +159,7 @@ def query_transactions(
         params = []
 
         if text:
-            filters.append("(source_text ILIKE %s OR description ILIKE %s)")
+            filters.append("(source_text LIKE %s OR description LIKE %s)")
             like_pattern = f"%{text}%"
             params.extend([like_pattern, like_pattern])
 
@@ -166,31 +169,37 @@ def query_transactions(
             params.append(resolved_type_id)
 
         if date_local:
-            filters.append("DATE(occurred_at AT TIME ZONE 'UTC' AT TIME ZONE 'America/Sao_Paulo') = %s")
+            filters.append("DATE(occurred_at at time zone 'UTC' at time zone 'America/Sao_Paulo') = %s")
             params.append(date_local)
 
         if date_from_local and date_to_local:
-            filters.append("DATE(occurred_at AT TIME ZONE 'UTC' AT TIME ZONE 'America/Sao_Paulo') BETWEEN %s AND %s")
+            filters.append("DATE(occurred_at at time zone 'UTC' at time zone 'America/Sao_Paulo') between %s and %s")
             params.extend([date_from_local, date_to_local])
         elif date_from_local:
-            filters.append("DATE(occurred_at AT TIME ZONE 'UTC' AT TIME ZONE 'America/Sao_Paulo') >= %s")
+            filters.append("DATE(occurred_at at time zone 'UTC' at time zone 'America/Sao_Paulo') >= %s")
             params.append(date_from_local)
         elif date_to_local:
-            filters.append("DATE(occurred_at AT TIME ZONE 'UTC' AT TIME ZONE 'America/Sao_Paulo') <= %s")
+            filters.append("DATE(occurred_at at time zone 'UTC' at time zone 'America/Sao_Paulo') <= %s")
             params.append(date_to_local)
 
-        where_clause = " AND ".join(filters) if filters else "1=1"
+        where_clause = " and ".join(filters) if filters else "1=1"
         
-        order_clause = "ASC" if date_from_local and date_to_local else "DESC"
+        order_clause = "asc" if date_from_local and date_to_local else "desc"
 
         query = f"""
-            SELECT id, amount, "type", category_id, description, payment_method,
-                   occurred_at AT TIME ZONE 'UTC' AT TIME ZONE 'America/Sao_Paulo' AS occurred_local,
-                   source_text
-            FROM transactions
-            WHERE {where_clause}
-            ORDER BY occurred_at {order_clause}
-            LIMIT %s;
+            select 
+                id, 
+                amount, 
+                type,
+                category_id,
+                description,
+                payment_method,
+                occurred_at at time zone 'UTC' at time zone 'America/Sao_Paulo',
+                source_text
+            from transactions
+            where {where_clause}
+            order by occurred_at {order_clause}
+            limit %s;
         """
         params.append(limit)
 
@@ -225,13 +234,14 @@ def total_balance() -> dict:
     """Retorna o saldo total (INCOME - EXPENSES) das transações."""
     conn = get_conn()
     cur = conn.cursor()
+    query = """
+            select  
+                coalesce(sum(case when t.type = 1 then t.amount else 0 end), 0), 
+                coalesce(sum(case when t.type = 2 then t.amount else 0 end), 0)
+            from transactions t;
+            """
     try:
-        cur.execute("""
-            SELECT 
-                COALESCE(SUM(CASE WHEN t.type = 1 THEN t.amount ELSE 0 END), 0) AS total_income,
-                COALESCE(SUM(CASE WHEN t.type = 2 THEN t.amount ELSE 0 END), 0) AS total_expenses
-            FROM transactions t;
-        """)
+        cur.execute(query)
         row = cur.fetchone()
         total_income, total_expenses = row
         balance = total_income - total_expenses
@@ -255,14 +265,15 @@ def daily_balance(date_local: str) -> dict:
     """Retorna o saldo (INCOME - EXPENSES) das transações para uma data específica (YYYY-MM-DD)."""
     conn = get_conn()
     cur = conn.cursor()
+    query = """
+            select  
+                coalesce(sum(case when t.type = 1 then t.amount else 0 end), 0), 
+                coalesce(sum(case when t.type = 2 then t.amount else 0 end), 0)
+            from transactions t;
+            where DATE(t.occurred_at at time zone 'UTC' at time zone 'America/Sao_Paulo') = %s;
+        """
     try:
-        cur.execute("""
-            SELECT 
-                COALESCE(SUM(CASE WHEN t.type = 1 THEN t.amount ELSE 0 END), 0) AS total_income,
-                COALESCE(SUM(CASE WHEN t.type = 2 THEN t.amount ELSE 0 END), 0) AS total_expenses
-            FROM transactions t
-            WHERE DATE(t.occurred_at AT TIME ZONE 'UTC' AT TIME ZONE 'America/Sao_Paulo') = %s;
-        """, (date_local,))
+        cur.execute(query, (date_local,))
         row = cur.fetchone()
         total_income, total_expenses = row
         balance = total_income - total_expenses
