@@ -7,7 +7,7 @@ from pydantic import BaseModel,Field
 
 load_dotenv()
 
-DATABASE_URL = os.getenv("DATABASE_URL")  # ou DATABASE_URL_ESCOLA, conforme o ambiente
+DATABASE_URL = os.getenv("DATABASE_URL_CASA")  # ou DATABASE_URL_ESCOLA, conforme o ambiente
 
 def get_conn():
     return psycopg2.connect(DATABASE_URL)
