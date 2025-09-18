@@ -296,6 +296,7 @@ def daily_balance(date_local: str) -> dict:
 @tool("biggest_expenses")
 def biggest_expenses(limit: int = 5) -> dict:
     """Retorna as maiores despesas (EXPENSES) registradas de todas as transactions, limitado pelo parâmetro 'limit'.
+        - mostrar: o quanto foi gasto - motivo - data - descrição
         - Da um resumo do que foi gasto e de como melhorar isso
         - Faz uma piada sobre essas despesas 
     """
