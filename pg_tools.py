@@ -7,7 +7,7 @@ from pydantic import BaseModel,Field
 
 load_dotenv()
 
-DATABASE_URL = os.getenv("DATABASE_URL_CASA")  # ou DATABASE_URL_ESCOLA, conforme o ambiente
+DATABASE_URL = os.getenv("DATABASE_URL_ESCOLA")  # ou DATABASE_URL_ESCOLA, conforme o ambiente
 
 def get_conn():
     return psycopg2.connect(DATABASE_URL)
@@ -20,7 +20,7 @@ class AddTransactionArgs(BaseModel):
         default=None,
         description="Timestamp ISO 8601; se ausente, usa NOW() no banco."
     )
-    category_name: Optional[str] = Field(default=None, description="Nome da categoria (opcional).""Caso não seja informado, coloque a que mais se enquadra, entre comida, besteira, estudo, transporte, moradia,saude, lazer, contas, investimento, presente ou outros")
+    category_name: Optional[str] = Field(default=None, description="Nome da categoria (opcional).""Caso não seja informado, coloque a que mais se enquadra, entre comida, besteira, estudo, transporte, lazer, constas, investimento, outros")
     type_id: Optional[int] = Field(default=None, description="ID em transaction_types (1=INCOME, 2=EXPENSES, 3=TRANSFER).")
     type_name: Optional[str] = Field(default=None, description="Nome do tipo: INCOME | EXPENSES | TRANSFER.")
     category_id: Optional[int] = Field(default=None, description="FK de categories (opcional).")
@@ -119,8 +119,6 @@ def add_transaction(
                 query,
                 (amount, resolved_type_id, category_id, description, payment_method, source_text),
             )
-
-
         new_id, occurred = cur.fetchone()
         conn.commit()
         return {"status": "ok", "id": new_id, "occurred_at": str(occurred)}
@@ -155,36 +153,48 @@ def query_transactions(
     conn = get_conn()
     cur = conn.cursor()
     try:
-        filters = []
+        fil = ""
         params = []
 
         if text:
-            filters.append("(source_text LIKE %s OR description LIKE %s)")
+            if fil: 
+                fil += " AND "
+            fil += "(source_text LIKE %s OR description LIKE %s)"
             like_pattern = f"%{text}%"
-            params.extend([like_pattern, like_pattern])
-
+            params.append(like_pattern)
+            params.append(like_pattern)
         resolved_type_id = _resolve_type_id(cur, None, type_name)
+
         if resolved_type_id:
-            filters.append('"type" = %s')
+            if fil: 
+                fil += " AND "
+            fil += '"type" = %s'
             params.append(resolved_type_id)
 
         if date_local:
-            filters.append("DATE(occurred_at at time zone 'UTC' at time zone 'America/Sao_Paulo') = %s")
+            if fil: 
+                fil += " AND "
+            fil += "(occurred_at AT TIME ZONE 'America/Sao_Paulo')::date = %s"
             params.append(date_local)
 
         if date_from_local and date_to_local:
-            filters.append("DATE(occurred_at at time zone 'UTC' at time zone 'America/Sao_Paulo') between %s and %s")
+            if fil: 
+                fil += " AND "
+            fil += "(occurred_at AT TIME ZONE 'America/Sao_Paulo')::date between %s and %s"
             params.extend([date_from_local, date_to_local])
         elif date_from_local:
-            filters.append("DATE(occurred_at at time zone 'UTC' at time zone 'America/Sao_Paulo') >= %s")
+            if fil: 
+                fil += " AND "
+            fil += "(occurred_at AT TIME ZONE 'America/Sao_Paulo')::date >= %s"
             params.append(date_from_local)
         elif date_to_local:
-            filters.append("DATE(occurred_at at time zone 'UTC' at time zone 'America/Sao_Paulo') <= %s")
+            if fil: 
+                fil += " AND "
+            fil += "(occurred_at AT TIME ZONE 'America/Sao_Paulo')::date <= %s"
             params.append(date_to_local)
-        
-        where_clause = " and ".join(filters) if filters else "1=1"
-        
-        order_clause = "asc" if date_from_local and date_to_local else "desc"
+
+        where_clause = fil if fil else "1=1"
+        order_clause = "ASC" if date_from_local and date_to_local else "DESC"
 
         query = f"""
             select 
@@ -194,7 +204,7 @@ def query_transactions(
                 category_id,
                 description,
                 payment_method,
-                occurred_at at time zone 'UTC' at time zone 'America/Sao_Paulo',
+                occurred_at AT TIME ZONE 'UTC' AT TIME ZONE 'America/Sao_Paulo',
                 source_text
             from transactions
             where {where_clause}
@@ -228,6 +238,7 @@ def query_transactions(
             conn.close()
         except Exception:
             pass
+
     
 @tool("total_balance") 
 def total_balance() -> dict:
@@ -235,16 +246,21 @@ def total_balance() -> dict:
     conn = get_conn()
     cur = conn.cursor()
     query = """
-            select  
-                coalesce(sum(case when t.type = 1 then t.amount else 0 end), 0), 
-                coalesce(sum(case when t.type = 2 then t.amount else 0 end), 0)
-            from transactions t;
+            with balance as(
+                select
+                    sum(case when t.type = 1 then t.amount else 0 end) as income,
+                    sum(case when t.type = 2 then t.amount else 0 end) as expense
+                from transactions t
+            ) select
+                income,
+                expense,
+                income - expense as balance
+            from balance
             """
     try:
         cur.execute(query)
         row = cur.fetchone()
-        total_income, total_expenses = row
-        balance = total_income - total_expenses
+        total_income, total_expenses, balance = row
         return {
             "status": "ok",
             "total_income": float(total_income),
@@ -266,17 +282,22 @@ def daily_balance(date_local: str) -> dict:
     conn = get_conn()
     cur = conn.cursor()
     query = """
-            select  
-                coalesce(sum(case when t.type = 1 then t.amount else 0 end), 0), 
-                coalesce(sum(case when t.type = 2 then t.amount else 0 end), 0)
-            from transactions t;
-            where DATE(t.occurred_at at time zone 'UTC' at time zone 'America/Sao_Paulo') = %s;
+            with balance as(
+                select
+                    sum(case when t.type = 1 then t.amount else 0 end) as income,
+                    sum(case when t.type = 2 then t.amount else 0 end) as expense
+                from transactions 
+                where (t.occurred_at at time zone 'UTC' at time zone 'America/Sao_Paulo')::date = %s;
+            ) select
+                income,
+                expense,
+                income - expense as balance
+            from balance
         """
     try:
         cur.execute(query, (date_local,))
         row = cur.fetchone()
-        total_income, total_expenses = row
-        balance = total_income - total_expenses
+        total_income, total_expenses , balance= row
         return {
             "status": "ok",
             "date": date_local,
@@ -294,7 +315,7 @@ def daily_balance(date_local: str) -> dict:
             pass
 
 @tool("biggest_expenses")
-def biggest_expenses(limit: int = 5) -> dict:
+def biggest_expenses(limit:Optional[int] = 5) -> dict:
     """Retorna as maiores despesas (EXPENSES) registradas de todas as transactions, limitado pelo parâmetro 'limit'.
         - mostrar: o quanto foi gasto - motivo - data - descrição
         - Da um resumo do que foi gasto e de como melhorar isso
@@ -304,14 +325,14 @@ def biggest_expenses(limit: int = 5) -> dict:
     cur = conn.cursor()
     query = """
             select 
-                id, 
-                amount, 
-                description, 
-                occurred_at at time zone 'UTC' at time zone 'America/Sao_Paulo',
-                source_text
-            from transactions
+                t.id, 
+                t.amount, 
+                t.description, 
+                t.occurred_at at time zone 'UTC' at time zone 'America/Sao_Paulo',
+                t.source_text
+            from transactions t
             where type = 2
-            order by amount desc
+            order by t.amount desc
             limit %s;
         """
     #type 2 é despesa
