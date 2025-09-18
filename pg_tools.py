@@ -286,7 +286,7 @@ def daily_balance(date_local: str) -> dict:
                 select
                     sum(case when t.type = 1 then t.amount else 0 end) as income,
                     sum(case when t.type = 2 then t.amount else 0 end) as expense
-                from transactions 
+                from transactions t
                 where (t.occurred_at at time zone 'UTC' at time zone 'America/Sao_Paulo')::date = %s;
             ) select
                 income,
