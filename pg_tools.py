@@ -181,7 +181,7 @@ def query_transactions(
         elif date_to_local:
             filters.append("DATE(occurred_at at time zone 'UTC' at time zone 'America/Sao_Paulo') <= %s")
             params.append(date_to_local)
-
+        
         where_clause = " and ".join(filters) if filters else "1=1"
         
         order_clause = "asc" if date_from_local and date_to_local else "desc"
@@ -292,5 +292,49 @@ def daily_balance(date_local: str) -> dict:
             conn.close()
         except Exception:
             pass
+
+@tool("biggest_expenses")
+def biggest_expenses(limit: int = 5) -> dict:
+    """Retorna as maiores despesas (EXPENSES) registradas de todas as transactions, limitado pelo parâmetro 'limit'.
+        - Da um resumo do que foi gasto e de como melhorar isso
+        - Faz uma piada sobre essas despesas 
+    """
+    conn = get_conn()
+    cur = conn.cursor()
+    query = """
+            select 
+                id, 
+                amount, 
+                description, 
+                occurred_at at time zone 'UTC' at time zone 'America/Sao_Paulo',
+                source_text
+            from transactions
+            where type = 2
+            order by amount desc
+            limit %s;
+        """
+    #type 2 é despesa
+    try:
+        cur.execute(query, (limit,))
+        rows = cur.fetchall()
+        expenses = []
+        for row in rows:
+            (tid, amount, description, occurred_local, source_text) = row
+            expenses.append({
+                "id": tid,
+                "amount": float(amount),
+                "description": description,
+                "occurred_at_local": occurred_local.isoformat(),
+                "source_text": source_text
+            })
+        return {"status": "ok", "expenses": expenses}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+    finally:
+        try:
+            cur.close()
+            conn.close()
+        except Exception:
+            pass
 # Exporta a lista de tools
-TOOLS = [add_transaction, query_transactions, total_balance, daily_balance, ]
+TOOLS = [add_transaction, query_transactions, total_balance, daily_balance, biggest_expenses]
