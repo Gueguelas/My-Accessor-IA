@@ -13,6 +13,11 @@ from langchain_core.runnables.history import RunnableWithMessageHistory
 from langchain.memory import ChatMessageHistory
 from langchain.agents import create_tool_calling_agent, AgentExecutor
 from pg_tools import TOOLS
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
+TZ = ZoneInfo("America/Sao_Paulo")
+today = datetime.now(TZ).strftime("%d/%m/%Y")
 
 from dotenv import load_dotenv
 import os
@@ -40,7 +45,7 @@ def get_session_history(session_id:int) -> ChatMessageHistory:
 ## COLOQUE O SEU TXT COM SEU PROPRIO PROMPT, SALVE EM "My-Accessor\prompt_accessor.txt"
 ## O MEU ESTÁ VERSIONADO COMO EXEMPLO A SEGUIR, MAS É MUITO MELHOR USAR O SEU
 
-with open("My-Accessor\prompt_accessor.txt", "r", encoding="utf-8") as f:
+with open("prompt_accessor.txt", "r", encoding="utf-8") as f:
     system_text = f.read()
 system_prompt = ("system", system_text)
 
@@ -52,43 +57,42 @@ example_prompt = ChatPromptTemplate.from_messages([
 
 
 shots = [
-    # ================ FEW-SHOTS ================
+    # ================ FEW-SHOTS OTIMIZADOS ================ 
     # 1) Decisão de compra (finanças)
     {"human": 
-    "Recebi R$X.XXXX este mês, já gastei R$X.XXX e tenho R$XX.XXX de dívida no cartão. Posso comprar um celular de R$XX.XXX?",
+    "Recebi R$ XXXX este mês, já gastei R$ XXXX e tenho R$ XXXX de dívida no cartão. Posso comprar um celular de R$ XXXX?",
     "ai":
-     "- Sua sobra atual é ~R$600 e há dívida ativa de R$200.\n"
-     "- *Recomendação*: \nNão recomendo a compra agora; priorize quitar a dívida e manter reserva mínima para o mês.\n"
+     "**Análise Direta:**\n- Saldo disponível: R$ XXXX.\n- Dívida no cartão: R$ XXXX.\n- A compra deixaria seu saldo em R$ XXXX.\n\n**Diagnóstico:**\nComprar o celular consumiria **64%** do seu saldo restante e adiaria a quitação da dívida do cartão, que possui juros altos. Isso comprometeria sua capacidade de criar uma reserva de emergência este mês.\n\n**Recomendação Acionável:**\nPriorize quitar a dívida do cartão para evitar juros. Após o pagamento, você ainda terá R$ XXX de sobra para o XXXX do mês.\n\n**Ação Proativa:**\nQue tal criarmos um plano de economia? Posso calcular em quantos meses você poderia comprar o celular confortavelmente, sem comprometer suas finanças, e programar lembretes para você."
     },
 
     # 2) Resumo financeiro (entradas/gastos/dívidas + histórico)
     {"human": 
     "Como está minha saúde financeira este mês?",
     "ai":
-     "- Com base nos seus registros e histórico recente, suas entradas cobrem os gastos, mas a margem de sobra está apertada.\n"
-     "- *Recomendação*: \nReduza 10–15% nas despesas variáveis desta semana e reforce a meta de poupança mínima.\n"
+     "**Análise Direta:**\n- Entradas: R$XXXX.\n- Gastos totais: R$ XXXX (93% da renda).\n- Sobra atual: R$ XXXX.\n\n**Diagnóstico:**\nSeus gastos com \"Alimentação fora de casa\" estão **25% acima** da média dos últimos 3 meses e superaram a meta de R$ XXXX que definimos. Isso está limitando sua capacidade de poupança.\n\n**Recomendação Acionável:**\nSugiro reduzir os gastos com apps de delivery em 15% nas próximas duas semanas. Isso pode liberar aproximadamente R$ XXXX para sua reserva.\n\n**Ação Proativa:**\nPosso configurar um alerta para te notificar quando seus gastos em \"Alimentação\" atingirem 80% da meta mensal?"
     },
 
     # 3) Agenda e conflitos
-    {"human": "Quais compromissos tenho amanhã? Estou livre para marcar uma call às 15h?",
+    {"human": "Quais compromissos tenho amanhã? Estou livre para marcar uma call às XX?",
     "ai":
-     "- Há duas reuniões agendadas; identifico potencial conflito por proximidade entre 14h e 16h.\n"
-     "- *Recomendação*: \nEvite marcar às 15h; melhor janela: 16h30–17h30.\n"
-     "- *Acompanhamento*: \nQuer que eu envie convite para 16h30 e ative lembrete por WhatsApp 30 min antes?"
+     "**Análise Direta:**\nVocê tem dois compromissos amanhã:\n- XXh : \"Reunião de Alinhamento\" (online).\n- XXhXX: \"Consulta Médica\" (presencial).\n\n**Diagnóstico:**\nMarcar uma call às 15h é arriscado. A reunião anterior pode atrasar, e você teria apenas 30 minutos antes de precisar se deslocar para a consulta médica (tempo de trajeto estimado: 25 min).\n\n**Recomendação Acionável:**\nAs melhores janelas livres são entre **XXh  e XXh ** ou após as **XXh **.\n\n**Ação Proativa:**\nQual horário prefere? Posso verificar a agenda dos outros participantes, encontrar o melhor horário comum e já enviar o convite com o link da videochamada."
     },
 
     # 4) Pendências e histórico (tarefas + notificação)
-    {"human": "Estou devendo pagar o IPVA e revisar o orçamento; pode me lembrar?",
+    {"human": "Estou devendo pagar o XXX e preciso revisar o orçamento. Pode me ajudar a não esquecer?",
     "ai":
-     "- Encontrei pendências similares no seu histórico deste período.\n"
-     "- *Recomendação*: \nAgendei 'Pagar IPVA' e 'Revisar orçamento mensal' para esta sexta às 19h.\n"
-     "- *Acompanhamento*: \nPrefere receber alerta por e-mail, WhatsApp ou ambos 1 hora antes?"
+     "**Análise Direta:**\nClaro. Registrei as pendências: \"Pagar XXX\" e \"Revisar orçamento mensal\".\n\n**Diagnóstico:**\nNotei que, nos últimos dois anos, você pagou o XXX sempre na última semana do mês. O vencimento deste ano é no dia XX do mês.\n\n**Recomendação Acionável:**\nSugiro agendar um bloco de 1 hora para \"Finanças Pessoais\" nesta sexta-feira às 18h, para resolver ambas as pendências de uma vez.\n\n**Ação Proativa:**\nJá adicionei o evento na sua agenda. Quer que eu também envie um lembrete por WhatsApp 1 hora antes com o link para o pagamento do XXX e a planilha de orçamento que usamos?"
     },
 
     {"human": "Sabe quem eu sou?",
     "ai":
      "Você é o Binomial!!!"
     },
+
+    {"human":"Quem é você",
+    "ai":
+     "EU SOU O MAIORAL QUASE NADA -- Seu melhor amigo e seu assistente pessoal de finanças, o mais boladão da história!!!"
+    }
 ]
 
 fewshots = FewShotChatMessagePromptTemplate(
@@ -103,6 +107,8 @@ prompt = ChatPromptTemplate.from_messages([
     ("human", "{input}"),                   # user prompt
     MessagesPlaceholder("agent_scratchpad"),
 ])
+
+prompt = prompt.partial(today_local=today.format())
 
 
 #  ================= CHAIN =================
@@ -132,13 +138,13 @@ while True:
     if user_input.lower() in ["sair", "end", "fim", "tchau", "bye"]:
         print("Encerrando a conversa.")
         break
-    # try:
-    response = chain.invoke(
-        {"input": user_input},
-        config={"configurable": {"session_id": "PRECISA_MAS_NAO_IMPORTA"}}
-    )
-    print(response['output'])
-    # except Exception as e:
-        # print(f"Erro ao consumir a API: {e}")
+    try:
+        response = chain.invoke(
+            {"input": user_input},
+            config={"configurable": {"session_id": "PRECISA_MAS_NAO_IMPORTA"}}
+        )
+        print(response['output'])
+    except Exception as e:
+        print(f"Erro ao consumir a API: {e}")
 
 
