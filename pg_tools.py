@@ -165,7 +165,7 @@ def query_transactions(
 
         if text:
             if fil: 
-                fil += " AND "
+                fil += " and "
             fil += "(source_text LIKE %s OR description LIKE %s)"
             like_pattern = f"%{text}%"
             params.append(like_pattern)
@@ -174,29 +174,29 @@ def query_transactions(
 
         if resolved_type_id:
             if fil: 
-                fil += " AND "
+                fil += " and "
             fil += '"type" = %s'
             params.append(resolved_type_id)
 
         if date_local:
             if fil: 
-                fil += " AND "
+                fil += " and "
             fil += "(occurred_at AT TIME ZONE 'America/Sao_Paulo')::date = %s"
             params.append(date_local)
 
         if date_from_local and date_to_local:
             if fil: 
-                fil += " AND "
+                fil += " and "
             fil += "(occurred_at AT TIME ZONE 'America/Sao_Paulo')::date between %s and %s"
             params.extend([date_from_local, date_to_local])
         elif date_from_local:
             if fil: 
-                fil += " AND "
+                fil += " and "
             fil += "(occurred_at AT TIME ZONE 'America/Sao_Paulo')::date >= %s"
             params.append(date_from_local)
         elif date_to_local:
             if fil: 
-                fil += " AND "
+                fil += " and "
             fil += "(occurred_at AT TIME ZONE 'America/Sao_Paulo')::date <= %s"
             params.append(date_to_local)
 
@@ -368,4 +368,4 @@ def biggest_expenses(limit:Optional[int] = 5) -> dict:
             pass
 
 # Exporta a lista de tools
-TOOLS = [add_transaction, query_transactions, total_balance, daily_balance, biggest_expenses,]
+TOOLS = [add_transaction,biggest_expenses, query_transactions, total_balance, daily_balance,]
