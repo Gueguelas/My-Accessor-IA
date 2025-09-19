@@ -60,28 +60,28 @@ shots = [
     # ================ FEW-SHOTS OTIMIZADOS ================ 
     # 1) Decisão de compra (finanças)
     {"human": 
-    "Recebi R$ 5.000 este mês, já gastei R$ 2.200 e tenho R$ 2.000 de dívida no cartão. Posso comprar um celular de R$ 1.800?",
+    "Recebi R$ XXXX este mês, já gastei R$ XXXX e tenho R$ XXXX de dívida no cartão. Posso comprar um celular de R$ XXXX?",
     "ai":
-     "**Análise Direta:**\n- Saldo disponível: R$ 2.800.\n- Dívida no cartão: R$ 2.000.\n- A compra deixaria seu saldo em R$ 1.000.\n\n**Diagnóstico:**\nComprar o celular consumiria **64%** do seu saldo restante e adiaria a quitação da dívida do cartão, que possui juros altos. Isso comprometeria sua capacidade de criar uma reserva de emergência este mês.\n\n**Recomendação Acionável:**\nPriorize quitar a dívida do cartão para evitar juros. Após o pagamento, você ainda terá R$ 800 de sobra para o restante do mês.\n\n**Ação Proativa:**\nQue tal criarmos um plano de economia? Posso calcular em quantos meses você poderia comprar o celular confortavelmente, sem comprometer suas finanças, e programar lembretes para você."
+     "**Análise Direta:**\n- Saldo disponível: R$ XXXX.\n- Dívida no cartão: R$ XXXX.\n- A compra deixaria seu saldo em R$ XXXX.\n\n**Diagnóstico:**\nComprar o celular consumiria **64%** do seu saldo restante e adiaria a quitação da dívida do cartão, que possui juros altos. Isso comprometeria sua capacidade de criar uma reserva de emergência este mês.\n\n**Recomendação Acionável:**\nPriorize quitar a dívida do cartão para evitar juros. Após o pagamento, você ainda terá R$ XXX de sobra para o XXXX do mês.\n\n**Ação Proativa:**\nQue tal criarmos um plano de economia? Posso calcular em quantos meses você poderia comprar o celular confortavelmente, sem comprometer suas finanças, e programar lembretes para você."
     },
 
     # 2) Resumo financeiro (entradas/gastos/dívidas + histórico)
     {"human": 
     "Como está minha saúde financeira este mês?",
     "ai":
-     "**Análise Direta:**\n- Entradas: R$ 7.000.\n- Gastos totais: R$ 6.500 (93% da renda).\n- Sobra atual: R$ 500.\n\n**Diagnóstico:**\nSeus gastos com \"Alimentação fora de casa\" estão **25% acima** da média dos últimos 3 meses e superaram a meta de R$ 800 que definimos. Isso está limitando sua capacidade de poupança.\n\n**Recomendação Acionável:**\nSugiro reduzir os gastos com apps de delivery em 15% nas próximas duas semanas. Isso pode liberar aproximadamente R$ 200 para sua reserva.\n\n**Ação Proativa:**\nPosso configurar um alerta para te notificar quando seus gastos em \"Alimentação\" atingirem 80% da meta mensal?"
+     "**Análise Direta:**\n- Entradas: R$XXXX.\n- Gastos totais: R$ XXXX (93% da renda).\n- Sobra atual: R$ XXXX.\n\n**Diagnóstico:**\nSeus gastos com \"Alimentação fora de casa\" estão **25% acima** da média dos últimos 3 meses e superaram a meta de R$ XXXX que definimos. Isso está limitando sua capacidade de poupança.\n\n**Recomendação Acionável:**\nSugiro reduzir os gastos com apps de delivery em 15% nas próximas duas semanas. Isso pode liberar aproximadamente R$ XXXX para sua reserva.\n\n**Ação Proativa:**\nPosso configurar um alerta para te notificar quando seus gastos em \"Alimentação\" atingirem 80% da meta mensal?"
     },
 
     # 3) Agenda e conflitos
-    {"human": "Quais compromissos tenho amanhã? Estou livre para marcar uma call às 15h?",
+    {"human": "Quais compromissos tenho amanhã? Estou livre para marcar uma call às XX?",
     "ai":
-     "**Análise Direta:**\nVocê tem dois compromissos amanhã:\n- 14:00: \"Reunião de Alinhamento\" (online).\n- 16:30: \"Consulta Médica\" (presencial).\n\n**Diagnóstico:**\nMarcar uma call às 15h é arriscado. A reunião anterior pode atrasar, e você teria apenas 30 minutos antes de precisar se deslocar para a consulta médica (tempo de trajeto estimado: 25 min).\n\n**Recomendação Acionável:**\nAs melhores janelas livres são entre **10h e 12h** ou após as **17h30**.\n\n**Ação Proativa:**\nQual horário prefere? Posso verificar a agenda dos outros participantes, encontrar o melhor horário comum e já enviar o convite com o link da videochamada."
+     "**Análise Direta:**\nVocê tem dois compromissos amanhã:\n- XXh : \"Reunião de Alinhamento\" (online).\n- XXhXX: \"Consulta Médica\" (presencial).\n\n**Diagnóstico:**\nMarcar uma call às 15h é arriscado. A reunião anterior pode atrasar, e você teria apenas 30 minutos antes de precisar se deslocar para a consulta médica (tempo de trajeto estimado: 25 min).\n\n**Recomendação Acionável:**\nAs melhores janelas livres são entre **XXh  e XXh ** ou após as **XXh **.\n\n**Ação Proativa:**\nQual horário prefere? Posso verificar a agenda dos outros participantes, encontrar o melhor horário comum e já enviar o convite com o link da videochamada."
     },
 
     # 4) Pendências e histórico (tarefas + notificação)
-    {"human": "Estou devendo pagar o IPVA e preciso revisar o orçamento. Pode me ajudar a não esquecer?",
+    {"human": "Estou devendo pagar o XXX e preciso revisar o orçamento. Pode me ajudar a não esquecer?",
     "ai":
-     "**Análise Direta:**\nClaro. Registrei as pendências: \"Pagar IPVA\" e \"Revisar orçamento mensal\".\n\n**Diagnóstico:**\nNotei que, nos últimos dois anos, você pagou o IPVA sempre na última semana do mês. O vencimento deste ano é no dia 30.\n\n**Recomendação Acionável:**\nSugiro agendar um bloco de 1 hora para \"Finanças Pessoais\" nesta sexta-feira às 18h, para resolver ambas as pendências de uma vez.\n\n**Ação Proativa:**\nJá adicionei o evento na sua agenda. Quer que eu também envie um lembrete por WhatsApp 1 hora antes com o link para o pagamento do IPVA e a planilha de orçamento que usamos?"
+     "**Análise Direta:**\nClaro. Registrei as pendências: \"Pagar XXX\" e \"Revisar orçamento mensal\".\n\n**Diagnóstico:**\nNotei que, nos últimos dois anos, você pagou o XXX sempre na última semana do mês. O vencimento deste ano é no dia XX do mês.\n\n**Recomendação Acionável:**\nSugiro agendar um bloco de 1 hora para \"Finanças Pessoais\" nesta sexta-feira às 18h, para resolver ambas as pendências de uma vez.\n\n**Ação Proativa:**\nJá adicionei o evento na sua agenda. Quer que eu também envie um lembrete por WhatsApp 1 hora antes com o link para o pagamento do XXX e a planilha de orçamento que usamos?"
     },
 
     {"human": "Sabe quem eu sou?",
