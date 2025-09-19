@@ -323,7 +323,8 @@ def daily_balance(date_local: str) -> dict:
 
 @tool("biggest_expenses")
 def biggest_expenses(limit:Optional[int] = 5) -> dict:
-    """Retorna as maiores despesas (EXPENSES) registradas de todas as transactions, limitado pelo parâmetro 'limit'.
+    """
+        Retorna as maiores despesas (EXPENSES) registradas de todas as transactions, limitado pelo parâmetro 'limit'.
         - mostrar: o quanto foi gasto - motivo - data - descrição
         - Da um resumo do que foi gasto e de como melhorar isso
         - Faz uma piada sobre essas despesas 
@@ -366,18 +367,5 @@ def biggest_expenses(limit:Optional[int] = 5) -> dict:
         except Exception:
             pass
 
-@tool("coin_converter", args_schema=CoinConverter)
-def coin_converter(valor:float, de:str, para:str="BRL"):
-    """Converte um valor de uma moeda para outra usando exchangerate.host"""
-    try:
-        url = f"https://api.frankfurter.app/latest?amount={valor}&from={de}&to={para}"
-        r = get(url)
-        data = r.json()
-        if "rates" in data and para.upper() in data["rates"]:
-            return f"{valor} {de.upper()} = {data['rates'][para.upper()]:.2f} {para.upper()}"
-        return data
-    except Exception as e:
-        return f"Erro ao acessar API de conversão: {e}"
-
 # Exporta a lista de tools
-TOOLS = [add_transaction, query_transactions, total_balance, daily_balance, biggest_expenses, coin_converter]
+TOOLS = [add_transaction, query_transactions, total_balance, daily_balance, biggest_expenses,]
