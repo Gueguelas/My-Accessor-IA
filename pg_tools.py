@@ -528,4 +528,3 @@ def update_transaction(
 
 # Exporta a lista de tools
 TOOLS = [add_transaction,biggest_expenses, query_transactions, total_balance, daily_balance, update_transaction]
->>>>>>> Stashed changes
