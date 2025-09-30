@@ -27,8 +27,6 @@ class AddTransactionArgs(BaseModel):
     description: Optional[str] = Field(default=None, description="Descrição (opcional).")
     payment_method: Optional[str] = Field(default=None, description="Forma de pagamento (opcional).")
 
-<<<<<<< Updated upstream
-=======
 class QueryTransactionsArgs(BaseModel):
     text: Optional[str] = Field(default=None, description="texto com contexto para buscar em source_text ou description (opcional).")
     type_name: Optional[str] = Field(default=None, description="Nome do tipo: INCOME | EXPENSES | TRANSFER (opcional).")
@@ -59,7 +57,6 @@ class UpdateTransactionArgs(BaseModel):
     description: Optional[str] = Field(default=None, description="Nova descrição.")
     payment_method: Optional[str] = Field(default=None, description="Novo meio de pagamento.")
     occurred_at: Optional[str] = Field(default=None, description="Novo timestamp ISO 8601.")
->>>>>>> Stashed changes
 
 #Garante que o campo type da tabela transactions receba um id válido (1=INCOME, 2=EXPENSES, 3=TRANSFER)
     
