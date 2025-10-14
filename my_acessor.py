@@ -82,6 +82,10 @@ shots_roteador = [
         "human": "Tenho reunião amanhã às 9h?",
         "ai": "ROUTE=agenda\nPERGUNTA_ORIGINAL=Tenho reunião amanhã às 9h?\nPERSONA={PERSONA_SISTEMA}\nCLARIFY="
     },
+    {
+        "human": "Qual email do suporte?",
+        "ai": "ROUTE=faq\nPERGUNTA_ORIGINAL=Qual email do suporte?\nPERSONA={PERSONA_SISTEMA}\nCLARIFY="
+    }
 ]
 
 fewshots_roteador = FewShotChatMessagePromptTemplate(
@@ -132,7 +136,7 @@ shots_agenda = [
     {
         "human": "ROUTE=agenda\nPERGUNTA_ORIGINAL=Agendar revisão do orçamento na sexta\nPERSONA={PERSONA_SISTEMA}\nCLARIFY=",
         "ai": """{{"dominio":"agenda","intencao":"criar","resposta":"Preciso do horário para agendar.","recomendacao":"","esclarecer":"Qual horário você prefere na sexta?"}}"""
-    },
+    }
 ]
 
 fewshots_agenda = FewShotChatMessagePromptTemplate(
