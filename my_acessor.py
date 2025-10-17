@@ -273,50 +273,71 @@ def criar_orquestrador():
         input_messages_key="input",
         history_messages_key="chat_history")
 
+def rotear_agente(resposta_roteador: str):
+    """
+    Função responsável por identificar para qual agente a conversa deve ser direcionada.
+    Retorna o nome do agente (string) ou None caso não tenha rota.
+    """
+    if "ROUTE=" not in resposta_roteador:
+        return None
 
-def fluxo_conversa(pergunta_usuario:str, session_id:str):
+    if "financeiro" in resposta_roteador:
+        return "financeiro"
+    elif "agenda" in resposta_roteador:
+        return "agenda"
+    elif "faq" in resposta_roteador:
+        return "faq"
+
+    return None
+
+
+def fluxo_conversa(pergunta_usuario: str, session_id: str):
+    """
+    Fluxo principal da conversa, responsável por:
+    1. Invocar o roteador
+    2. Direcionar para o agente correto (se houver rota)
+    3. Passar pelo orquestrador
+    """
     roteador = criar_roteador()
-    
     resposta_roteador = roteador.invoke(
-        {"input":pergunta_usuario}, 
+        {"input": pergunta_usuario},
         config={"configurable": {"session_id": session_id}}
     )
 
-    if ("ROUTE=" in resposta_roteador):
-        output = ""
+    agente_destino = rotear_agente(resposta_roteador)
 
-        if ("financeiro" in resposta_roteador):
-            financeiro = criar_financeiro()
-
-            resposta_financeiro = financeiro.invoke(
-                {"input":resposta_roteador},
-                config={"configurable":{"session_id":session_id}}
-            )
-
-            output = resposta_financeiro["output"]
-            
-        else:
-            agenda = criar_agenda()
-
-            resposta_agenda = agenda.invoke(
-                {"input":resposta_roteador},
-                config={"configurable":{"session_id":session_id}}
-            )
-
-            output = resposta_agenda["output"]
-
-        orquestrador = criar_orquestrador()
-
-        resposta_final = orquestrador.invoke(
-            {"input":output}, 
-            config={"configurable":{"session_id":session_id}}
-        )
-
-        return resposta_final
-
-
-    else:
+    if agente_destino is None:
         return resposta_roteador
+
+    # Dicionário de agentes — fácil de manter e escalar
+    agentes = {
+        "financeiro": criar_financeiro,
+        "agenda": criar_agenda,
+        "faq": criar_faq
+    }
+
+    # Instancia o agente correto dinamicamente
+    agente_func = agentes.get(agente_destino)
+    if not agente_func:
+        return {"output": f"Agente '{agente_destino}' não encontrado."}
+
+    agente = agente_func()
+    resposta_agente = agente.invoke(
+        {"input": resposta_roteador},
+        config={"configurable": {"session_id": session_id}}
+    )
+
+    output = resposta_agente["output"]
+
+    # Passa pelo orquestrador para gerar a resposta final
+    orquestrador = criar_orquestrador()
+    resposta_final = orquestrador.invoke(
+        {"input": output},
+        config={"configurable": {"session_id": session_id}}
+    )
+
+    return resposta_final
+
     
 
 while True:
