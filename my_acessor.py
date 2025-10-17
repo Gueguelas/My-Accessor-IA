@@ -1,54 +1,51 @@
-from langchain_core.prompts import (
-    ChatPromptTemplate,
-    MessagesPlaceholder,
-    HumanMessagePromptTemplate,
-    AIMessagePromptTemplate
-    )
-from langchain_core.prompts import FewShotChatMessagePromptTemplate
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_core.output_parsers import StrOutputParser
-from dotenv import load_dotenv
+from langchain_core.prompts import (
+    ChatPromptTemplate, HumanMessagePromptTemplate, AIMessagePromptTemplate,
+    FewShotChatMessagePromptTemplate, MessagesPlaceholder)
 import os
+from dotenv import load_dotenv
+from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables.history import RunnableWithMessageHistory
+from langchain_core.runnables import RunnablePassThrough
+from operator import itemgetter
 from langchain.memory import ChatMessageHistory
 from langchain.agents import create_tool_calling_agent, AgentExecutor
-from pg_tools import TOOLS
+from pg_tools import TOOLS_FINANCEIRO, TOOLS_AGENDA
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
 TZ = ZoneInfo("America/Sao_Paulo")
-today = datetime.now(TZ).strftime("%d/%m/%Y")
+today = datetime.now(TZ).date()
 
-from dotenv import load_dotenv
-import os
-
-load_dotenv()
-
+ 
 store = {}
-
-## ================================
-## SESSION HISTORY
-## ================================
-def get_session_history(session_id:int) -> ChatMessageHistory:
+ 
+def get_session_history(session_id) -> ChatMessageHistory:
     if session_id not in store:
         store[session_id] = ChatMessageHistory()
-    return store[session_id] 
+    return store[session_id]
+ 
+load_dotenv()
 
-#  ================= LLM =================
+api_key = os.getenv("GOOGLE_GEMINI_API")
+ 
 llm = ChatGoogleGenerativeAI(
     model="gemini-2.5-flash",
     temperature=0.7,
     top_p=0.95,
-    google_api_key=os.getenv("GEMINI_API_KEY")
+    google_api_key=api_key
 )
 
-llm_fast = ChatGoogleGenerativeAI(
-    model="gemini-2.0-flash",
-    google_api_key=os.getenv("GEMINI_API_KEY")
+llm_fast = ChatGoogleGenerativeAI( 
+    model="gemini-2.0-flash", # Modelo baseado em performance
+    temperature=0, # Modelo deterministico, não vai ser criativo. Vai ser direto para o usuário evitando modificar qualquer coisa
+    google_api_key=api_key
 )
 
-# prompt do agente roteador
-with open ("prompt_roteador.txt", "r",encoding="utf-8") as f:
+# PROMPTS -------------------------------------------------
+
+# Roteador ------------------------------------------------
+with open("prompt_roteador.txt", "r") as f:
     system_prompt_roteador = f.read()
 
 example_prompt_base = ChatPromptTemplate.from_messages([
@@ -82,10 +79,6 @@ shots_roteador = [
         "human": "Tenho reunião amanhã às 9h?",
         "ai": "ROUTE=agenda\nPERGUNTA_ORIGINAL=Tenho reunião amanhã às 9h?\nPERSONA={PERSONA_SISTEMA}\nCLARIFY="
     },
-    {
-        "human": "Qual email do suporte?",
-        "ai": "ROUTE=faq\nPERGUNTA_ORIGINAL=Qual email do suporte?\nPERSONA={PERSONA_SISTEMA}\nCLARIFY="
-    }
 ]
 
 fewshots_roteador = FewShotChatMessagePromptTemplate(
@@ -93,9 +86,11 @@ fewshots_roteador = FewShotChatMessagePromptTemplate(
     example_prompt=example_prompt_base
 )
 
+
 # -------------------- PROMPTS ESPECIALISTAS --------------------
-# prompt do agente financeiro
-with open ("prompt_financeiro.txt", "r",encoding="utf-8") as f:
+
+# Agente financeiro ---------------------------------------------
+with open("prompt_financeiro.txt", "r") as f:
     system_prompt_financeiro = f.read()
 
 # Especialista financeiro (mesmo example_prompt_pair)
@@ -119,9 +114,9 @@ fewshots_financeiro = FewShotChatMessagePromptTemplate(
     example_prompt=example_prompt_base,
 )
 
-############################
-# prompt do agente de agenda
-with open ("prompt_agenda.txt", "r",encoding="utf-8") as f:
+
+# Agente de agenda -------------------------------------------------
+with open("prompt_agenda.txt", "r") as f:
     system_prompt_agenda = f.read()
 
 shots_agenda = [
@@ -136,7 +131,7 @@ shots_agenda = [
     {
         "human": "ROUTE=agenda\nPERGUNTA_ORIGINAL=Agendar revisão do orçamento na sexta\nPERSONA={PERSONA_SISTEMA}\nCLARIFY=",
         "ai": """{{"dominio":"agenda","intencao":"criar","resposta":"Preciso do horário para agendar.","recomendacao":"","esclarecer":"Qual horário você prefere na sexta?"}}"""
-    }
+    },
 ]
 
 fewshots_agenda = FewShotChatMessagePromptTemplate(
@@ -144,27 +139,32 @@ fewshots_agenda = FewShotChatMessagePromptTemplate(
     example_prompt=example_prompt_base,
 )
 
-### Agente orquestrador ####
-with open ("prompt_orquestrador.txt", "r",encoding="utf-8") as f:
+### Agente FAQ -----------------------------------------------------
+with open("prompt_faq.txt", "r") as f:
+    system_prompt_faq = f.read()
+
+
+### Agente orquestrador --------------------------------------------
+with open("prompt_orquestrador.txt", "r") as f:
     system_prompt_orquestrador = f.read()
 
 shots_orquestrador = [
     # 1) Financeiro — consultar
     {
         "human": """ESPECIALISTA_JSON:\n{{"dominio":"financeiro","intencao":"consultar","resposta":"Você gastou R$ 842,75 com 'comida' no mês passado.","recomendacao":"Quer detalhar por estabelecimento?","janela_tempo":{{"de":"2025-08-01","ate":"2025-08-31","rotulo":"mês passado (ago/2025)"}}}}""",
-        "ai": "Você gastou R$ 842,75 com 'comida' no mês passado.\n- *Recomendação*:\nQuer detalhar por estabelecimento?"
+        "ai": "Você gastou R$ 842,75 com 'comida' no mês passado.\n- Recomendação:\nQuer detalhar por estabelecimento?"
     },
 
     # 2) Financeiro — falta dado → esclarecer
     {
         "human": """ESPECIALISTA_JSON:\n{{"dominio":"financeiro","intencao":"resumo","resposta":"Preciso do período para seguir.","recomendacao":"","esclarecer":"Qual período considerar (ex.: hoje, esta semana, mês passado)?"}}""",
-        "ai": """Preciso do período para seguir.\n- *Acompanhamento* (opcional):\nQual período considerar (ex.: hoje, esta semana, mês passado)?"""
+        "ai": """Preciso do período para seguir.\n- Acompanhamento (opcional):\nQual período considerar (ex.: hoje, esta semana, mês passado)?"""
     },
 
     # 3) Agenda — criar
     {
         "human": """ESPECIALISTA_JSON:\n{{"dominio":"agenda","intencao":"criar","resposta":"Posso criar 'Reunião com João' amanhã 09:00–10:00.","recomendacao":"Confirmo o envio do convite?","janela_tempo":{{"de":"2025-09-29T09:00","ate":"2025-09-29T10:00","rotulo":"amanhã 09:00–10:00"}},"evento":{{"titulo":"Reunião com João","data":"2025-09-29","inicio":"09:00","fim":"10:00","local":"online"}}}}""",
-        "ai": """Posso criar 'Reunião com João' amanhã 09:00–10:00.\n- *Recomendação*:\nConfirmo o envio do convite?"""
+        "ai": """Posso criar 'Reunião com João' amanhã 09:00–10:00.\n- Recomendação:\nConfirmo o envio do convite?"""
     },
 ]
 
@@ -173,172 +173,158 @@ fewshots_orquestrador = FewShotChatMessagePromptTemplate(
     example_prompt=example_prompt_base,
 )
 
+# ================================================================
+# Criação dos prompts
+prompts = {
+    "roteador": ChatPromptTemplate.from_messages([
+        system_prompt_roteador,
+        fewshots_roteador,
+        MessagesPlaceholder("chat_history"),
+        ("human", "{input}"),
+    ]).partial(today_local = today.isoformat()),
+    "financeiro": ChatPromptTemplate.from_messages([
+        system_prompt_financeiro,
+        fewshots_financeiro,
+        MessagesPlaceholder("chat_history"),
+        ("human", "{input}"),
+        MessagesPlaceholder("agent_scratchpad") # llm fazendo um bloco de anotações, dando total liberdade para o agente mudar o promptm, para implementação de tools
+    ]).partial(today_local = today.isoformat()),
+    "agenda": ChatPromptTemplate.from_messages([
+        system_prompt_agenda,
+        fewshots_agenda,
+        MessagesPlaceholder("chat_history"),
+        ("human", "{input}"),
+        MessagesPlaceholder("agent_scratchpad") # llm fazendo um bloco de anotações, dando total liberdade para o agente mudar o promptm, para implementação de tools
+    ]).partial(today_local = today.isoformat()),
+    "faq": ChatPromptTemplate.from_messages([
+        system_prompt_faq,
+        ("human",
+        "Pergunta do usuário:\n{question}\n\n"
+        "CONTEXTO (trechos do documento):\n{context}\n\n"
+        "Responda com base APENAS no CONTEXTO.")
+    ]),
+    "orquestrador": ChatPromptTemplate.from_messages([
+        system_prompt_orquestrador,
+        fewshots_orquestrador,
+        MessagesPlaceholder("chat_history"),
+        ("human", "{input}"),
+    ]).partial(today_local = today.isoformat()),
+}
 
-## ================================
-## PROMPTS
-## ================================
+# ================================================================
+# Criação de agentes
+def criar_roteador():
+    return RunnableWithMessageHistory(
+        prompts["roteador"] | llm_fast | StrOutputParser(),
+        get_session_history=get_session_history,
+        history_messages_key="chat_history",
+        input_messages_key="input")
 
-prompt_orchestrator = ChatPromptTemplate.from_messages([
-    system_prompt_orquestrador,                          # system prompt
-    fewshots_orquestrador,                               # Shots human/ai 
-    MessagesPlaceholder("chat_history"),                 # memória
-    ("human", "{input}"),                                # user prompt
-])
-
-prompt_roteador = ChatPromptTemplate.from_messages([
-    system_prompt_roteador,                          # system prompt
-    fewshots_roteador,                               # Shots human/ai 
-    MessagesPlaceholder("chat_history"),             # memória
-    ("human", "{input}"),                            # user prompt
-]).partial(today_local=today.format())
-
-prompt_agenda = ChatPromptTemplate.from_messages([
-    system_prompt_agenda,                          # system prompt
-    fewshots_agenda,                               # Shots human/ai 
-    MessagesPlaceholder("chat_history"),           # memória
-    ("human", "{input}"),                          # user prompt
-    MessagesPlaceholder("agent_scratchpad"),
-    #A possibilidade do agente mudar o prompt do jeito que ele precisar para melhorar sua capacidade
-]).partial(today_local=today.format())
-
-prompt_financeiro = ChatPromptTemplate.from_messages([
-    system_prompt_financeiro,                          # system prompt
-    fewshots_financeiro,                               # Shots human/ai 
-    MessagesPlaceholder("chat_history"),               # memória
-    ("human", "{input}"),                              # user prompt
-    MessagesPlaceholder("agent_scratchpad"),
-    #A possibilidade do agente mudar o prompt do jeito que ele precisar para melhorar sua capacidade
-]).partial(today_local=today.format())
-
-## ================================
-## AGENTS
-## ================================
-
-
-## FINANCEIRO
-
-financeiro_agente = create_tool_calling_agent(
-    # Conceito de alterar a o prompt, vc joga o cerebro, as ferramentas e o prompt e da a possibilidade de alterar
-    llm,
-    TOOLS,
-    prompt_financeiro
-)
-financeiro_executor_base = AgentExecutor( # Isso é a chain -> uma pipeline 
-    agent=financeiro_agente,
-    tools=TOOLS,
-    verbose=False,
-    return_intermediate_steps=True
-)
-
-financeiro_executor = RunnableWithMessageHistory(
-    # Agora sim o objeto rodável do agente, com histórico
-    financeiro_executor_base, # CHAIN
-    get_session_history=get_session_history,
-    input_messages_key="input",
-    history_messages_key="chat_history"  
-)
-
-## AGENDA
-
-TOOLS_AGENDA=[]
-
-agenda_agente = create_tool_calling_agent( 
-    # Conceito de alterar a o prompt, vc joga o cerebro, as ferramentas e o prompt e da a possibilidade de alterar
-    llm,
-    TOOLS_AGENDA,
-    prompt_agenda
-)
-agenda_executor_base = AgentExecutor( # Isso é a chain -> uma pipeline 
-    agent=agenda_agente,
-    tools=TOOLS,
-    verbose=False,
-    return_intermediate_steps=True
-)
-agenda_executor = RunnableWithMessageHistory( 
-    # Agora sim o objeto rodável do agente, com histórico
-    agenda_executor_base,  # CHAIN
-    get_session_history=get_session_history,
-    input_messages_key="input",
-    history_messages_key="chat_history"  
-)
-
-## ROTEADOR
-
-router_chain = RunnableWithMessageHistory(
-    # Agora sim o objeto rodável do agente, com histórico
-    prompt_roteador | llm_fast | StrOutputParser(),
-    get_session_history=get_session_history,
-    input_messages_key="input",
-    history_messages_key="chat_history"
-)
-
-## ORQUESTRADOR
-
-orchestrator_chain = RunnableWithMessageHistory(
-    # Agora sim o objeto rodável do agente, com histórico
-    prompt_orchestrator | llm_fast | StrOutputParser(),
-    get_session_history=get_session_history,
-    input_messages_key="input",
-    history_messages_key="chat_history"
-)
-
-
-def executar_fluxo_assesor(pergunta_user:str, session_id="precisa_mas_nao_importa") ->  str:
-    response = ''
-    response_roteador = router_chain.invoke(
-        {"input": pergunta_user},
-        config={"configurable": 
-                {"session_id": "PRECISA_MAS_NAO_IMPORTA"}}
+def criar_financeiro():
+    financeiro_agent = create_tool_calling_agent(
+        llm=llm,
+        tools=TOOLS_FINANCEIRO,
+        prompt=prompts["financeiro"]
     )
-    if "ROUTE=" not in response_roteador: 
-        #Hard code para detectar se ele encaminha para um agente especialista ou nao, caso não ja volta a resposta do roteadot
-        response = response_roteador
+    financeiro_executor_base = AgentExecutor(
+        agent=financeiro_agent,
+        tools=TOOLS_FINANCEIRO,
+        verbose=False,
+        handle_parsing_errors=True,
+        return_intermediate_steps=False
+    )
+    financeiro_executor = RunnableWithMessageHistory(
+        financeiro_executor_base,
+        get_session_history=get_session_history,
+        input_messages_key='input',
+        history_messages_key='chat_history'
+    )
+
+    return financeiro_executor
+
+def criar_agenda():
+    agenda_agent = create_tool_calling_agent(llm, TOOLS_AGENDA, prompts["agenda"])
+    agenda_executor_base = AgentExecutor(
+        agent=agenda_agent,
+        tools=TOOLS_AGENDA,
+        verbose=False,
+        handle_parsing_errors=True,
+        return_intermediate_steps=False
+    )
+    agenda_executor = RunnableWithMessageHistory(
+        agenda_executor_base,
+        get_session_history=get_session_history,
+        input_messages_key='input',
+        history_messages_key='chat_history'
+    )
+
+    return agenda_executor
+
+def criar_faq():
+    return (RunnablePassThrough.assign(
+        question=itemgetter("input"),
+        context= lambda x: get_faq_context(x["input"])
+    )| prompts["faq"] | llm_fast | StrOutputParser())
+
+def criar_orquestrador():
+    return RunnableWithMessageHistory(
+        prompts["orquestrador"] | llm_fast | StrOutputParser(), 
+        get_session_history=get_session_history,
+        input_messages_key="input",
+        history_messages_key="chat_history")
+
+
+def fluxo_conversa(pergunta_usuario:str, session_id:str):
+    roteador = criar_roteador()
     
-    if "ROUTE=financeiro" in response_roteador:
-        #Hard code para detectar se ele encaminha para um agente especialista ou nao, caso não ja volta a resposta do roteadot
-        resposta_financeiro = financeiro_executor.invoke(
-            {"input": response_roteador},
-            config={"configurable": 
-                    {"session_id": "PRECISA_MAS_NAO_IMPORTA"}}
-        )
-        response = orchestrator_chain.invoke(
-            #Chamando o orchestrador para uma respostinha cria
-            {"input": resposta_financeiro},
-            config={"configurable": 
-                    {"session_id": "PRECISA_MAS_NAO_IMPORTA"}}
-        )
-        
-    
-    if "ROUTE=agenda" in response_roteador:
-        #Hard code para detectar se ele encaminha para um agente especialista ou nao, caso não ja volta a resposta do roteadot
-        response_agenda = agenda_executor.invoke(
-            {"input": response_roteador},
-            config={"configurable": 
-                    {"session_id": "PRECISA_MAS_NAO_IMPORTA"}}
+    resposta_roteador = roteador.invoke(
+        {"input":pergunta_usuario}, 
+        config={"configurable": {"session_id": session_id}}
+    )
+
+    if ("ROUTE=" in resposta_roteador):
+        output = ""
+
+        if ("financeiro" in resposta_roteador):
+            financeiro = criar_financeiro()
+
+            resposta_financeiro = financeiro.invoke(
+                {"input":resposta_roteador},
+                config={"configurable":{"session_id":session_id}}
+            )
+
+            output = resposta_financeiro["output"]
+            
+        else:
+            agenda = criar_agenda()
+
+            resposta_agenda = agenda.invoke(
+                {"input":resposta_roteador},
+                config={"configurable":{"session_id":session_id}}
+            )
+
+            output = resposta_agenda["output"]
+
+        orquestrador = criar_orquestrador()
+
+        resposta_final = orquestrador.invoke(
+            {"input":output}, 
+            config={"configurable":{"session_id":session_id}}
         )
 
-        response = orchestrator_chain.invoke(
-            #Chamando o orchestrador para uma respostinha cria
-            {"input": response_agenda},
-            config={"configurable": 
-                    {"session_id": "PRECISA_MAS_NAO_IMPORTA"}}
-        )
-    
-    return response
+        return resposta_final
 
+
+    else:
+        return resposta_roteador
+    
 
 while True:
-    user_input = input("> ")
-    if user_input.lower() in ["sair", "end", "fim", "tchau", "bye"]:
-        print("Encerrando a conversa.")
+    usuario = input("> ")
+
+    if usuario in  ("sair", "tchau", "bye"):
         break
-    try:
-        response = executar_fluxo_assesor(
-            pergunta_user=user_input,
-            session_id="precisa_mas_nao_importa"
-        )
-        print(response)
-    except Exception as e:
-        print(f"Erro ao consumir a API: {e}")
 
+    resposta = fluxo_conversa(usuario, "teste")
 
+    print(f"IA: {resposta}")
