@@ -7,7 +7,7 @@ from pydantic import BaseModel,Field
 
 load_dotenv()
 
-DATABASE_URL = os.getenv("DATABASE_URL")  
+DATABASE_URL = os.getenv("DATABASE_URL_ESCOLA")  
 
 def get_conn():
     return psycopg2.connect(DATABASE_URL)
@@ -524,4 +524,4 @@ def update_transaction(
             pass
 
 # Exporta a lista de tools
-TOOLS = [add_transaction,biggest_expenses, query_transactions, total_balance, daily_balance, update_transaction]
+TOOLS_FINANCEIRO = [add_transaction,biggest_expenses, query_transactions, total_balance, daily_balance, update_transaction]
