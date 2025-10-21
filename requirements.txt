@@ -4,3 +4,4 @@ langchain
 langchain-core
 langchain-google-genai
 pydantic
+pypdf
