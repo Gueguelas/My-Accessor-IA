@@ -6,13 +6,14 @@ import os
 from dotenv import load_dotenv
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables.history import RunnableWithMessageHistory
-from langchain_core.runnables import RunnablePassThrough
+from langchain_core.runnables import RunnablePassthrough
 from operator import itemgetter
 from langchain.memory import ChatMessageHistory
 from langchain.agents import create_tool_calling_agent, AgentExecutor
-from pg_tools import TOOLS_FINANCEIRO, TOOLS_AGENDA
+from pg_tools import TOOLS_FINANCEIRO
 from datetime import datetime
 from zoneinfo import ZoneInfo
+from faq_tools import get_faq_context
 
 TZ = ZoneInfo("America/Sao_Paulo")
 today = datetime.now(TZ).date()
@@ -27,7 +28,7 @@ def get_session_history(session_id) -> ChatMessageHistory:
  
 load_dotenv()
 
-api_key = os.getenv("GOOGLE_GEMINI_API")
+api_key = os.getenv("GEMINI_API_KEY")
  
 llm = ChatGoogleGenerativeAI(
     model="gemini-2.5-flash",
@@ -45,7 +46,7 @@ llm_fast = ChatGoogleGenerativeAI(
 # PROMPTS -------------------------------------------------
 
 # Roteador ------------------------------------------------
-with open("prompt_roteador.txt", "r") as f:
+with open("prompt_roteador.txt", "r", encoding="utf-8") as f:
     system_prompt_roteador = f.read()
 
 example_prompt_base = ChatPromptTemplate.from_messages([
@@ -57,7 +58,7 @@ shots_roteador = [
     # 1) Saudação -> resposta direta
     {
         "human": "Oi, tudo bem?",
-        "ai": "Olá! Posso te ajudar com finanças ou agenda; por onde quer começar?"
+        "ai": "Eai meu Binomial Junior! Belezinha?? Como posso te ajudar"
     },
     # 2) Fora de escopo -> recusar e redirecionar
     {
@@ -90,7 +91,7 @@ fewshots_roteador = FewShotChatMessagePromptTemplate(
 # -------------------- PROMPTS ESPECIALISTAS --------------------
 
 # Agente financeiro ---------------------------------------------
-with open("prompt_financeiro.txt", "r") as f:
+with open("prompt_financeiro.txt", "r", encoding="utf-8") as f:
     system_prompt_financeiro = f.read()
 
 # Especialista financeiro (mesmo example_prompt_pair)
@@ -116,7 +117,7 @@ fewshots_financeiro = FewShotChatMessagePromptTemplate(
 
 
 # Agente de agenda -------------------------------------------------
-with open("prompt_agenda.txt", "r") as f:
+with open("prompt_agenda.txt", "r", encoding="utf-8") as f:
     system_prompt_agenda = f.read()
 
 shots_agenda = [
@@ -140,12 +141,12 @@ fewshots_agenda = FewShotChatMessagePromptTemplate(
 )
 
 ### Agente FAQ -----------------------------------------------------
-with open("prompt_faq.txt", "r") as f:
+with open("prompt_faq.txt", "r", encoding="utf-8") as f:
     system_prompt_faq = f.read()
 
 
 ### Agente orquestrador --------------------------------------------
-with open("prompt_orquestrador.txt", "r") as f:
+with open("prompt_orquestrador.txt", "r", encoding="utf-8") as f:
     system_prompt_orquestrador = f.read()
 
 shots_orquestrador = [
@@ -214,6 +215,10 @@ prompts = {
 # ================================================================
 # Criação de agentes
 def criar_roteador():
+    """
+    Cria um roteador de perguntas e respostas.
+    """
+
     return RunnableWithMessageHistory(
         prompts["roteador"] | llm_fast | StrOutputParser(),
         get_session_history=get_session_history,
@@ -221,6 +226,10 @@ def criar_roteador():
         input_messages_key="input")
 
 def criar_financeiro():
+    """
+    Cria um agente de financeiro.
+    """
+
     financeiro_agent = create_tool_calling_agent(
         llm=llm,
         tools=TOOLS_FINANCEIRO,
@@ -242,7 +251,12 @@ def criar_financeiro():
 
     return financeiro_executor
 
+TOOLS_AGENDA=[]
+
 def criar_agenda():
+    """
+    Cria um agente de agenda.
+    """
     agenda_agent = create_tool_calling_agent(llm, TOOLS_AGENDA, prompts["agenda"])
     agenda_executor_base = AgentExecutor(
         agent=agenda_agent,
@@ -261,12 +275,18 @@ def criar_agenda():
     return agenda_executor
 
 def criar_faq():
-    return (RunnablePassThrough.assign(
+    """
+    Cria um agente de FAQ.
+    """
+    return (RunnablePassthrough.assign(
         question=itemgetter("input"),
         context= lambda x: get_faq_context(x["input"])
     )| prompts["faq"] | llm_fast | StrOutputParser())
 
 def criar_orquestrador():
+    """
+    Cria um agente orchestrador.
+    """
     return RunnableWithMessageHistory(
         prompts["orquestrador"] | llm_fast | StrOutputParser(), 
         get_session_history=get_session_history,
@@ -309,17 +329,21 @@ def fluxo_conversa(pergunta_usuario: str, session_id: str):
     if agente_destino is None:
         return resposta_roteador
 
-    # Dicionário de agentes — fácil de manter e escalar
     agentes = {
         "financeiro": criar_financeiro,
         "agenda": criar_agenda,
         "faq": criar_faq
     }
 
-    # Instancia o agente correto dinamicamente
     agente_func = agentes.get(agente_destino)
     if not agente_func:
         return {"output": f"Agente '{agente_destino}' não encontrado."}
+    
+    if agente_destino == "faq":
+        return agente_func().invoke(
+            {"input": pergunta_usuario},
+            config={"configurable": {"session_id": session_id}}
+        )
 
     agente = agente_func()
     resposta_agente = agente.invoke(
@@ -329,7 +353,6 @@ def fluxo_conversa(pergunta_usuario: str, session_id: str):
 
     output = resposta_agente["output"]
 
-    # Passa pelo orquestrador para gerar a resposta final
     orquestrador = criar_orquestrador()
     resposta_final = orquestrador.invoke(
         {"input": output},
