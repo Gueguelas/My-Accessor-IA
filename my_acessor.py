@@ -14,6 +14,8 @@ from pg_tools import TOOLS_FINANCEIRO
 from datetime import datetime
 from zoneinfo import ZoneInfo
 from faq_tools import get_faq_context
+from langgraph.graph import StateGraph, START, END
+from guardrail import verificar_guardrail
 
 TZ = ZoneInfo("America/Sao_Paulo")
 today = datetime.now(TZ).date()
@@ -257,7 +259,11 @@ def criar_agenda():
     """
     Cria um agente de agenda.
     """
-    agenda_agent = create_tool_calling_agent(llm, TOOLS_AGENDA, prompts["agenda"])
+    agenda_agent = create_tool_calling_agent(
+        lllm=llm, 
+        tools=TOOLS_AGENDA, 
+        prompt=prompts["agenda"]
+    )
     agenda_executor_base = AgentExecutor(
         agent=agenda_agent,
         tools=TOOLS_AGENDA,
@@ -293,82 +299,170 @@ def criar_orquestrador():
         input_messages_key="input",
         history_messages_key="chat_history")
 
-def rotear_agente(resposta_roteador: str):
-    """
-    Função responsável por identificar para qual agente a conversa deve ser direcionada.
-    Retorna o nome do agente (string) ou None caso não tenha rota.
-    """
-    if "ROUTE=" not in resposta_roteador:
-        return None
+# ===============================================================
 
-    if "financeiro" in resposta_roteador:
-        return "financeiro"
-    elif "agenda" in resposta_roteador:
-        return "agenda"
-    elif "faq" in resposta_roteador:
-        return "faq"
-
-    return None
-
-
-def fluxo_conversa(pergunta_usuario: str, session_id: str):
-    """
-    Fluxo principal da conversa, responsável por:
-    1. Invocar o roteador
-    2. Direcionar para o agente correto (se houver rota)
-    3. Passar pelo orquestrador
-    """
+# Criação dos nós no langGraph
+def router_node(state: dict) -> dict:
     roteador = criar_roteador()
     resposta_roteador = roteador.invoke(
-        {"input": pergunta_usuario},
-        config={"configurable": {"session_id": session_id}}
-    )
-
-    agente_destino = rotear_agente(resposta_roteador)
-
-    if agente_destino is None:
-        return resposta_roteador
-
-    agentes = {
-        "financeiro": criar_financeiro,
-        "agenda": criar_agenda,
-        "faq": criar_faq
-    }
-
-    agente_func = agentes.get(agente_destino)
-    if not agente_func:
-        return {"output": f"Agente '{agente_destino}' não encontrado."}
-    
-    if agente_destino == "faq":
-        return agente_func().invoke(
-            {"input": pergunta_usuario},
-            config={"configurable": {"session_id": session_id}}
-        )
-
-    agente = agente_func()
-    resposta_agente = agente.invoke(
-        {"input": resposta_roteador},
-        config={"configurable": {"session_id": session_id}}
-    )
-
-    output = resposta_agente["output"]
-
+        {"input": state["input"]},
+        config={"configurable": {"session_id": state["session_id"]}}
+    )  
+   
+    if not resposta_roteador.startswith("ROUTE="):
+        return {"resposta_usuario": resposta_roteador}
+   
+    rota = resposta_roteador.split("\n", 1)[0].split("=", 1)[1].strip().lower()
+    if rota not in {"financeiro", "agenda", "faq"}:
+        return {"erro": f"Rota inválida: {rota}"}
+ 
+    return {"rota": rota, "roteador": resposta_roteador, 'input':state['input'], 'session_id': state['session_id']}
+ 
+def faq_node(state: dict) -> dict:
+    faq = criar_faq()
+ 
+    result = faq.invoke(
+        {"input": state['input']},
+        config={"configurable": {"session_id": state["session_id"]}}
+    )  
+    return {"resposta_usuario": result, 'session_id': state['session_id']}
+ 
+def financeiro_node(state: dict) -> dict:
+    financeiro = criar_financeiro()
+    result = financeiro.invoke(
+        {"input": state['roteador']},
+        config={"configurable": {"session_id": state["session_id"]}}
+    )  
+    return {"saida_especialista": result["output"], 'session_id': state['session_id']}
+ 
+def agenda_node(state: dict) -> dict:
+    agenda = criar_agenda()
+    result = agenda.invoke(
+        {"input": state['roteador']},
+        config={"configurable": {"session_id": state["session_id"]}}
+    )  
+    return {"saida_especialista": result["output"], 'session_id': state['session_id']}
+ 
+def orchestrator_node(state: dict) -> dict:
     orquestrador = criar_orquestrador()
     resposta_final = orquestrador.invoke(
-        {"input": output},
-        config={"configurable": {"session_id": session_id}}
-    )
-
-    return resposta_final
-
-    
-
+        {"input": state['saida_especialista']},
+        config={"configurable": {"session_id": state["session_id"]}}
+    )  
+    return {"resposta_usuario": resposta_final}
+ 
+ 
+def pre_guard_node(state:dict)->dict:
+    acao, mensagem, gatilhos = verificar_guardrail(state["input"])
+ 
+    # Política Padrão:
+    # - BLOQUEAR / AVISAR / SANITIZAR => interrompe e retorna mensagem curta ao usuário
+    # - PERMITIR => segue normalmente para o roteador
+    if acao in ("BLOQUEAR", "AVISAR", "SANITIZAR"):
+        return {"resposta_usuario":mensagem}
+   
+    # PERMITIR
+    return {"input":state["input"], "session_id":state["session_id"]}
+ 
+# ------------------- DECISOR ------------------------
+ 
+def decide_after_router(state: dict) -> str:
+    if state.get("erro") or state.get("resposta_usuario"):
+        return "end"
+    rota = state.get("rota")
+    if rota == "financeiro":
+        return "financeiro"
+    if rota == "agenda":
+        return "agenda"
+    if rota == "faq":
+        return "faq"
+    return "end"
+ 
+def decide_after_specialist(state: dict) -> str:
+    if state.get("erro"):
+        return "end"
+    return "orquestrador"
+ 
+def decide_after_pre_guard(state:dict) -> str:
+    if state.get("resposta_usuario"):
+        return "end"
+    return "roteador"
+ 
+# ------------------- CONSTRUÇÃO DO GRAFO ------------
+ 
+graph = StateGraph(dict)
+ 
+graph.add_node("guardrail", pre_guard_node)
+graph.add_node("roteador", router_node)
+graph.add_node("faq", faq_node)
+graph.add_node("financeiro", financeiro_node)
+graph.add_node("agenda", agenda_node)
+graph.add_node("orquestrador", orchestrator_node)
+ 
+graph.add_edge(START, "guardrail")
+ 
+graph.add_conditional_edges(
+    "guardrail",
+    decide_after_pre_guard,
+    {
+        "roteador":"roteador",
+        "end": END
+    }
+)
+ 
+graph.add_conditional_edges(
+    "roteador",
+    decide_after_router,
+    {
+        "financeiro": "financeiro",
+        "agenda": "agenda",
+        "faq":"faq",
+        "end": END,
+    },
+)
+ 
+graph.add_edge("faq", END)
+ 
+graph.add_conditional_edges(
+    "financeiro",
+    decide_after_specialist,
+    {"orquestrador": "orquestrador", "end": END},
+)
+graph.add_conditional_edges(
+    "agenda",
+    decide_after_specialist,
+    {"orquestrador": "orquestrador", "end": END},
+)
+ 
+graph.add_edge("orquestrador", END)
+ 
+app = graph.compile()
+ 
+ 
+# ------------------- FUNÇÃO DE EXECUÇÃO --------------
+ 
+def executar_fluxo_assessor(pergunta_usuario: str, session_id: str) -> str:
+    final_state = app.invoke({"input": pergunta_usuario, "session_id": session_id})
+    if final_state.get("erro"):
+        return f"Erro: {final_state['erro']}"
+    return final_state.get("resposta_usuario", "Não foi possível responder.") # isso é um if não tiver resposta_usuario, mostre a "não foi possivel..."
+ 
 while True:
-    usuario = input("> ")
-
-    if usuario in  ("sair", "tchau", "bye"):
-        break
-
-    resposta = fluxo_conversa(usuario, "teste")
-
-    print(f"IA: {resposta}")
+    try:
+        user_input = input("> ")
+        if user_input.lower() in ('sair', 'end', 'fim', 'tchau', 'bye'):
+            print("Encerrando a conversa.")
+            break
+       
+        # Chama a função orquestradora que executa o fluxo completo (Roteador -> Especialista -> Orquestrador)
+        resposta = executar_fluxo_assessor(
+            pergunta_usuario=user_input,
+            session_id="PRECISA_MAS_NÃO_IMPORTA"
+        )
+       
+        # Imprime a resposta formatada para o usuário (saída do Orquestrador/Roteador)
+        print(resposta)
+       
+    except Exception as e:
+            print("Erro ao consumir a API:", e)
+            continue
