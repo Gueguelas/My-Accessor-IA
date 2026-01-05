@@ -169,6 +169,11 @@ shots_orquestrador = [
         "human": """ESPECIALISTA_JSON:\n{{"dominio":"agenda","intencao":"criar","resposta":"Posso criar 'Reunião com João' amanhã 09:00–10:00.","recomendacao":"Confirmo o envio do convite?","janela_tempo":{{"de":"2025-09-29T09:00","ate":"2025-09-29T10:00","rotulo":"amanhã 09:00–10:00"}},"evento":{{"titulo":"Reunião com João","data":"2025-09-29","inicio":"09:00","fim":"10:00","local":"online"}}}}""",
         "ai": """Posso criar 'Reunião com João' amanhã 09:00–10:00.\n- Recomendação:\nConfirmo o envio do convite?"""
     },
+
+    {"human":"Quem é você",
+    "ai":
+     "EU SOU O MAIORAL QUASE NADA -- Seu melhor amigo e seu assistente pessoal de finanças, o mais boladão da história!!!"
+    }
 ]
 
 fewshots_orquestrador = FewShotChatMessagePromptTemplate(

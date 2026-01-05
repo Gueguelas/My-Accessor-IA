@@ -4,10 +4,12 @@ import psycopg2
 from typing import Optional, List
 from langchain.tools import tool
 from pydantic import BaseModel,Field
+from requests import get
 
 load_dotenv()
 
-DATABASE_URL = os.getenv("DATABASE_URL_ESCOLA")  
+
+DATABASE_URL = os.getenv("DATABASE_URL_ESCOLA")  # ou DATABASE_URL_ESCOLA, conforme o ambiente
 
 def get_conn():
     return psycopg2.connect(DATABASE_URL)
@@ -36,6 +38,7 @@ class QueryTransactionsArgs(BaseModel):
     limit: int = Field(default=20, description="Número máximo de transações a retornar.")
 
 
+
 class UpdateTransactionArgs(BaseModel):
     id: Optional[int] = Field(
         default=None,
@@ -57,6 +60,7 @@ class UpdateTransactionArgs(BaseModel):
     description: Optional[str] = Field(default=None, description="Nova descrição.")
     payment_method: Optional[str] = Field(default=None, description="Novo meio de pagamento.")
     occurred_at: Optional[str] = Field(default=None, description="Novo timestamp ISO 8601.")
+
 
 #Garante que o campo type da tabela transactions receba um id válido (1=INCOME, 2=EXPENSES, 3=TRANSFER)
     
@@ -119,28 +123,29 @@ def add_transaction(
             category_id = _get_category_id(cur, category_name) if not category_id else category_name
 
         if occurred_at:
-            cur.execute(
-                """
+            query = """
                 INSERT INTO transactions
-                    (amount, type, category_id, category_name, description, payment_method, occurred_at, source_text)
+                    (amount, "type", category_id, description, payment_method, occurred_at, source_text)
                 VALUES
-                    (%s, %s, %s, %s ,%s, %s, %s::timestamptz, %s)
+                    (%s, %s, %s, %s, %s, %s::timestamptz, %s)
                 RETURNING id, occurred_at;
-                """,
-                (amount, resolved_type_id, category_id, category_name, description, payment_method, occurred_at, source_text),
+                """
+            cur.execute(
+                query,
+                (amount, resolved_type_id, category_id, description, payment_method, occurred_at, source_text),
             )
         else:
-            cur.execute(
-                """
+            query = """
                 INSERT INTO transactions
-                    (amount, type, category_id, category_name ,description, payment_method, occurred_at, source_text)
+                    (amount, "type", category_id, description, payment_method, occurred_at, source_text)
                 VALUES
                     (%s, %s, %s, %s, %s, NOW(), %s)
                 RETURNING id, occurred_at;
-                """,
-                (amount, resolved_type_id, category_id, category_name ,description, payment_method, source_text),
+                """
+            cur.execute(
+                query,
+                (amount, resolved_type_id, category_id, description, payment_method, source_text),
             )
-
         new_id, occurred = cur.fetchone()
         conn.commit()
         return {"status": "ok", "id": new_id, "occurred_at": str(occurred)}
